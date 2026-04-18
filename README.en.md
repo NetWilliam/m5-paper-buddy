@@ -212,13 +212,10 @@ Tail the log: `tail -f ~/.claude-buddy/daemon.log`
 ## 🙏 Credits
 
 This project was inspired by Anthropic's
-[`claude-desktop-buddy`](https://github.com/anthropics/claude-desktop-buddy):
-
-- The Nordic UART Service + heartbeat-JSON wire protocol shape is the
-  same, so in principle a Paper running this firmware can also be
-  driven by that project's desktop bridge
-- The cat ASCII frames in `src/paper/buddy_frames.h` are adapted from
-  its `src/buddies/cat.cpp`
+[`claude-desktop-buddy`](https://github.com/anthropics/claude-desktop-buddy) —
+the Nordic UART Service + heartbeat-JSON wire protocol shape is the
+same, so in principle a Paper running this firmware can also be driven
+by that project's desktop bridge.
 
 Bundled font: GenSenRounded Regular, from the M5Stack `M5EPD` library's
 examples.
@@ -250,8 +247,6 @@ See the "Attribution & derivative obligations" section at the top of
 
 - `data/cjk.ttf`: GenSenRounded Regular, from the M5EPD library's
   examples. The font's own license terms apply to that file.
-- `src/paper/buddy_frames.h`: ASCII frames adapted from
-  anthropics/claude-desktop-buddy (MIT).
 - Nordic UART Service UUIDs and heartbeat JSON schema reference
   anthropics/claude-desktop-buddy (MIT).
 

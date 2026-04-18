@@ -197,10 +197,7 @@ plugin/scripts/stop.sh && plugin/scripts/start.sh
 
 ## 🙏 致谢
 
-本项目参考了 Anthropic 的 [`claude-desktop-buddy`](https://github.com/anthropics/claude-desktop-buddy)：
-
-- Nordic UART Service + heartbeat-JSON 通信协议沿用它的形状，因此理论上这块 Paper 也能被原项目的桌面端 bridge 驱动
-- `src/paper/buddy_frames.h` 里的 ASCII 猫是从原项目 `src/buddies/cat.cpp` 搬来的
+本项目参考了 Anthropic 的 [`claude-desktop-buddy`](https://github.com/anthropics/claude-desktop-buddy) —— Nordic UART Service + heartbeat-JSON 通信协议沿用它的形状，因此理论上这块 Paper 也能被原项目的桌面端 bridge 驱动。
 
 内置字体是 GenSenRounded Regular，来自 M5Stack 的 `M5EPD` 库示例。
 
@@ -224,7 +221,6 @@ plugin/scripts/stop.sh && plugin/scripts/start.sh
 <summary>第三方组件</summary>
 
 - `data/cjk.ttf`：GenSenRounded Regular，来自 M5EPD 库示例，字体本身的许可条款适用于该文件
-- `src/paper/buddy_frames.h`：ASCII 帧改自 anthropics/claude-desktop-buddy（MIT）
 - Nordic UART Service UUID 与 heartbeat JSON schema：参考自 anthropics/claude-desktop-buddy（MIT）
 
 </details>
