@@ -1,5 +1,9 @@
 # m5-paper-buddy
 
+<p align="center">
+  <img src="https://github.com/user-attachments/assets/49a543f3-ad1a-4735-a5d1-ef98867cff1e" alt="m5-paper-buddy on an M5Paper V1.1" width="540">
+</p>
+
 A physical Claude Code companion running on an **M5Paper V1.1** (4.7"
 e-ink, 540×960, GT911 touch, ESP32). The Paper sits on your desk and
 mirrors every Claude Code session you have open: project, branch,
