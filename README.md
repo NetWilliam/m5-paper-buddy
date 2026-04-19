@@ -173,6 +173,13 @@ tools/claude_code_bridge.py   # daemon: HTTP → serial/BLE 桥接
 
 ---
 
+## 📖 深入阅读
+
+- **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** —— 技术架构 / 通信协议 / daemon 与固件内部 / 踩过的坑
+- **[docs/PRODUCT.md](docs/PRODUCT.md)** —— 产品思考 / 设计取舍 / 未来畅想 / 给想 fork 的人
+
+---
+
 ## 🧩 开发
 
 固件改完后：

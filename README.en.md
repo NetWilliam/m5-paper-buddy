@@ -187,6 +187,15 @@ tools/claude_code_bridge.py   # daemon: HTTP → serial/BLE bridge
 
 ---
 
+## 📖 Deep dive
+
+- **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** — technical architecture, wire protocol, daemon + firmware internals, debugging war stories
+- **[docs/PRODUCT.md](docs/PRODUCT.md)** — product thinking, design tradeoffs, future vision, notes for forkers
+
+*(Both docs are in Chinese; feel free to open a PR translating to English.)*
+
+---
+
 ## 🧩 Development
 
 Firmware iteration:
