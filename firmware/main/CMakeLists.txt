@@ -1,0 +1,25 @@
+idf_component_register(
+    SRCS
+        "main.cc"
+        "display/lcd_driver.cc"
+        "display/buddy_display.cc"
+        "button/button_handler.cc"
+        "transport/serial_jtag_transport.cc"
+        "transport/ble_transport.cc"
+        "protocol/line_protocol.cc"
+        "state/state_parser.cc"
+        "state/stats.cc"
+    INCLUDE_DIRS "."
+    REQUIRES
+        driver
+        esp_lcd
+        esp_lvgl_port
+        lvgl
+        button
+        json
+        esp_driver_usb_serial_jtag
+        spiffs
+        mbedtls
+        bt
+        nvs_flash
+)

@@ -46,8 +46,8 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 
 # Nordic UART Service UUIDs — match the firmware's ble_bridge.cpp.
 NUS_SERVICE_UUID = "6e400001-b5a3-f393-e0a9-e50e24dcca9e"
-NUS_RX_UUID      = "6e400002-b5a3-f393-e0a9-e50e24dcca9e"   # central → device (write)
-NUS_TX_UUID      = "6e400003-b5a3-f393-e0a9-e50e24dcca9e"   # device → central (notify)
+NUS_RX_UUID = "6e400002-b5a3-f393-e0a9-e50e24dcca9e"  # central → device (write)
+NUS_TX_UUID = "6e400003-b5a3-f393-e0a9-e50e24dcca9e"  # device → central (notify)
 
 # -----------------------------------------------------------------------------
 # Shared state
@@ -56,27 +56,28 @@ NUS_TX_UUID      = "6e400003-b5a3-f393-e0a9-e50e24dcca9e"   # device → central
 STATE_LOCK = threading.Lock()
 
 SESSIONS_RUNNING = set()
-SESSIONS_TOTAL   = set()
+SESSIONS_TOTAL = set()
 SESSIONS_WAITING = set()
-SESSION_META     = {}          # sid -> {cwd, project, branch, dirty, checked_at}
-TRANSCRIPT       = deque(maxlen=8)
-TOKENS_TOTAL     = 0
-TOKENS_TODAY     = 0
-ACTIVE_PROMPT    = None        # currently-focused prompt shown on device
-PENDING_PROMPTS  = {}          # prompt_id -> prompt dict (all unresolved)
-PENDING          = {}          # prompt_id -> {"event", "decision"}
+SESSION_META = {}  # sid -> {cwd, project, branch, dirty, checked_at}
+TRANSCRIPT = deque(maxlen=8)
+TOKENS_TOTAL = 0
+TOKENS_TODAY = 0
+ACTIVE_PROMPT = None  # currently-focused prompt shown on device
+PENDING_PROMPTS = {}  # prompt_id -> prompt dict (all unresolved)
+PENDING = {}  # prompt_id -> {"event", "decision"}
 
-BUDGET_LIMIT        = 0
-MODEL_NAME          = ""
-ASSISTANT_MSG       = ""                # global fallback when no session is focused
-SESSION_ASSISTANT   = {}                # sid -> latest assistant text (per-session)
-FOCUSED_SID         = None              # user-picked focused session (for dashboard)
-TRANSPORT           = None
-BUMP_EVENT          = threading.Event()
+BUDGET_LIMIT = 0
+MODEL_NAME = ""
+ASSISTANT_MSG = ""  # global fallback when no session is focused
+SESSION_ASSISTANT = {}  # sid -> latest assistant text (per-session)
+FOCUSED_SID = None  # user-picked focused session (for dashboard)
+TRANSPORT = None
+BUMP_EVENT = threading.Event()
 
 
 def log(*a, **kw):
-    print(*a, file=sys.stderr, flush=True, **kw)
+    ts = datetime.now().isoformat(timespec="milliseconds")
+    print(f"[{ts}]", *a, file=sys.stderr, flush=True, **kw)
 
 
 def now_hm():
@@ -94,24 +95,31 @@ def add_transcript(line: str):
 # write(). A line buffer lives in the daemon (below), not in the transport.
 # -----------------------------------------------------------------------------
 
+
 class Transport:
-    def start(self, on_byte, on_connect=None): raise NotImplementedError
-    def write(self, data: bytes): raise NotImplementedError
-    def connected(self) -> bool: raise NotImplementedError
+    def start(self, on_byte, on_connect=None):
+        raise NotImplementedError
+
+    def write(self, data: bytes):
+        raise NotImplementedError
+
+    def connected(self) -> bool:
+        raise NotImplementedError
 
 
 class SerialTransport(Transport):
     def __init__(self, port):
         import serial
+
         self._port_name = port
         self.ser = serial.Serial(port, 115200, timeout=0.2)
         self._write_lock = threading.Lock()
-        time.sleep(0.2)   # let the port settle before talking
+        time.sleep(0.2)  # let the port settle before talking
         log(f"[serial] opened {port}")
 
     def start(self, on_byte, on_connect=None):
         if on_connect:
-            on_connect()   # serial is "connected" as soon as the port opens
+            on_connect()  # serial is "connected" as soon as the port opens
         threading.Thread(target=self._reader, args=(on_byte,), daemon=True).start()
 
     def _reader(self, on_byte):
@@ -132,7 +140,8 @@ class SerialTransport(Transport):
             except Exception as e:
                 log(f"[serial] write fail: {e}")
 
-    def connected(self): return True
+    def connected(self):
+        return True
 
 
 class BLETransport(Transport):
@@ -145,9 +154,10 @@ class BLETransport(Transport):
 
     Reconnects automatically on disconnect or scan failure.
     """
+
     def __init__(self, name_prefix="Claude-"):
         self._name_prefix = name_prefix
-        self._loop  = None
+        self._loop = None
         self._client = None
         self._thread = None
         self._on_byte = None
@@ -201,6 +211,7 @@ class BLETransport(Transport):
                     def _on_notify(_sender, data: bytearray):
                         for b in data:
                             self._on_byte(b)
+
                     await client.start_notify(NUS_TX_UUID, _on_notify)
 
                     self._connected_evt.set()
@@ -211,7 +222,8 @@ class BLETransport(Transport):
                     # is blocked waiting for the callback to return.
                     if self._on_connect:
                         threading.Thread(
-                            target=self._on_connect, daemon=True,
+                            target=self._on_connect,
+                            daemon=True,
                             name="ble-handshake",
                         ).start()
 
@@ -239,7 +251,8 @@ class BLETransport(Transport):
         except Exception as e:
             log(f"[ble] write fail: {e!r}")
 
-    def connected(self): return self._connected_evt.is_set()
+    def connected(self):
+        return self._connected_evt.is_set()
 
 
 # -----------------------------------------------------------------------------
@@ -251,7 +264,7 @@ _rx_buf = bytearray()
 
 def on_rx_byte(b: int):
     global _rx_buf
-    if b in (0x0A, 0x0D):   # \n or \r
+    if b in (0x0A, 0x0D):  # \n or \r
         if _rx_buf:
             raw = bytes(_rx_buf)
             _rx_buf = bytearray()
@@ -282,7 +295,7 @@ def on_rx_byte(b: int):
                 FOCUSED_SID = obj.get("sid") or None
                 BUMP_EVENT.set()
     else:
-        if len(_rx_buf) < 4096:   # sanity cap; devices don't send this much anyway
+        if len(_rx_buf) < 4096:  # sanity cap; devices don't send this much anyway
             _rx_buf.append(b)
 
 
@@ -305,8 +318,14 @@ GIT_TTL_SEC = 10
 
 def _git(cwd, *args, timeout=2.0):
     try:
-        out = subprocess.run(("git", *args), cwd=cwd, capture_output=True,
-                             text=True, timeout=timeout, check=False)
+        out = subprocess.run(
+            ("git", *args),
+            cwd=cwd,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            check=False,
+        )
         return out.stdout.strip() if out.returncode == 0 else ""
     except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
         return ""
@@ -322,9 +341,11 @@ def refresh_git(sid: str, cwd: str):
     root = _git(cwd, "rev-parse", "--show-toplevel") or cwd
     SESSION_META[sid] = {
         "cwd": cwd,
-        "project":    os.path.basename(root.rstrip("/"))[:39] or "",
-        "branch":     _git(cwd, "rev-parse", "--abbrev-ref", "HEAD")[:39],
-        "dirty":      sum(1 for ln in _git(cwd, "status", "--porcelain").splitlines() if ln.strip()),
+        "project": os.path.basename(root.rstrip("/"))[:39] or "",
+        "branch": _git(cwd, "rev-parse", "--abbrev-ref", "HEAD")[:39],
+        "dirty": sum(
+            1 for ln in _git(cwd, "status", "--porcelain").splitlines() if ln.strip()
+        ),
         "checked_at": now,
     }
 
@@ -334,10 +355,16 @@ def refresh_git(sid: str, cwd: str):
 # -----------------------------------------------------------------------------
 
 HINT_FIELDS = {
-    "Bash": "command", "Edit": "file_path", "MultiEdit": "file_path",
-    "Write": "file_path", "Read": "file_path", "NotebookEdit": "notebook_path",
-    "WebFetch": "url", "WebSearch": "query",
-    "Glob": "pattern", "Grep": "pattern",
+    "Bash": "command",
+    "Edit": "file_path",
+    "MultiEdit": "file_path",
+    "Write": "file_path",
+    "Read": "file_path",
+    "NotebookEdit": "notebook_path",
+    "WebFetch": "url",
+    "WebSearch": "query",
+    "Glob": "pattern",
+    "Grep": "pattern",
 }
 
 
@@ -365,7 +392,7 @@ def body_from_tool(tool: str, tin: dict) -> str:
         return (q or "").strip()[:500]
 
     if tool == "Bash":
-        cmd  = tin.get("command", "")
+        cmd = tin.get("command", "")
         desc = tin.get("description", "")
         return (f"{desc}\n\n$ {cmd}" if desc else f"$ {cmd}")[:500]
 
@@ -376,9 +403,9 @@ def body_from_tool(tool: str, tin: dict) -> str:
         return f"{path}\n\n--- old\n{oldv}\n\n+++ new\n{newv}"
 
     if tool == "Write":
-        path    = tin.get("file_path", "")
+        path = tin.get("file_path", "")
         content = str(tin.get("content", ""))
-        head    = content[:320]
+        head = content[:320]
         return f"{path}\n\n{head}{('...' if len(content) > 320 else '')}"
 
     if tool == "Read":
@@ -394,8 +421,10 @@ def body_from_tool(tool: str, tin: dict) -> str:
 
     if tool in ("Glob", "Grep"):
         parts = [f"pattern: {tin.get('pattern', '')}"]
-        if tin.get("path"): parts.append(f"path: {tin['path']}")
-        if tin.get("type"): parts.append(f"type: {tin['type']}")
+        if tin.get("path"):
+            parts.append(f"path: {tin['path']}")
+        if tin.get("type"):
+            parts.append(f"type: {tin['type']}")
         return "\n".join(parts)[:300]
 
     try:
@@ -408,32 +437,37 @@ def body_from_tool(tool: str, tin: dict) -> str:
 # Heartbeat construction
 # -----------------------------------------------------------------------------
 
+
 def build_heartbeat() -> dict:
     with STATE_LOCK:
-        msg = (f"approve: {ACTIVE_PROMPT['tool']}" if ACTIVE_PROMPT
-               else (TRANSCRIPT[0][6:] if TRANSCRIPT else "idle"))
+        msg = (
+            f"approve: {ACTIVE_PROMPT['tool']}"
+            if ACTIVE_PROMPT
+            else (TRANSCRIPT[0][6:] if TRANSCRIPT else "idle")
+        )
         # tokens_today is now "focused session's current context" — gets
         # filled in below once we resolve which session is focused. Start
         # with zero; a session without transcript data will stay at zero.
         hb = {
-            "total":        len(SESSIONS_TOTAL),
-            "running":      len(SESSIONS_RUNNING),
-            "waiting":      len(SESSIONS_WAITING),
-            "msg":          msg[:23],
-            "entries":      list(TRANSCRIPT),
-            "tokens":       0,
+            "total": len(SESSIONS_TOTAL),
+            "running": len(SESSIONS_RUNNING),
+            "waiting": len(SESSIONS_WAITING),
+            "msg": msg[:23],
+            "entries": list(TRANSCRIPT),
+            "tokens": 0,
             "tokens_today": 0,
         }
         if ACTIVE_PROMPT:
             p = {
-                "id":   ACTIVE_PROMPT["id"],
+                "id": ACTIVE_PROMPT["id"],
                 "tool": ACTIVE_PROMPT["tool"][:19],
                 "hint": ACTIVE_PROMPT["hint"][:43],
                 "body": ACTIVE_PROMPT["body"][:500],
                 "kind": ACTIVE_PROMPT.get("kind", "permission"),
             }
             opts = ACTIVE_PROMPT.get("option_labels") or []
-            if opts: p["options"] = opts[:4]
+            if opts:
+                p["options"] = opts[:4]
             # Identify which session this prompt is from — so the user
             # can see on the Paper which project/window needs an answer.
             sid = ACTIVE_PROMPT.get("session_id", "")
@@ -454,19 +488,22 @@ def build_heartbeat() -> dict:
         sessions_list = []
         for sid in list(SESSIONS_TOTAL)[:5]:
             meta = SESSION_META.get(sid) or {}
-            sessions_list.append({
-                "sid":     sid[:8],
-                "full":    sid,
-                "proj":    (meta.get("project", "") or "")[:22],
-                "branch":  (meta.get("branch", "") or "")[:16],
-                "dirty":   meta.get("dirty", 0),
-                "running": sid in SESSIONS_RUNNING,
-                "waiting": sid in SESSIONS_WAITING,
-                "focused": sid == FOCUSED_SID,
-            })
+            sessions_list.append(
+                {
+                    "sid": sid[:8],
+                    "full": sid,
+                    "proj": (meta.get("project", "") or "")[:22],
+                    "branch": (meta.get("branch", "") or "")[:16],
+                    "dirty": meta.get("dirty", 0),
+                    "running": sid in SESSIONS_RUNNING,
+                    "waiting": sid in SESSIONS_WAITING,
+                    "focused": sid == FOCUSED_SID,
+                }
+            )
         if sessions_list:
             hb["sessions"] = sessions_list
-        if BUDGET_LIMIT > 0:   hb["budget"] = BUDGET_LIMIT
+        if BUDGET_LIMIT > 0:
+            hb["budget"] = BUDGET_LIMIT
 
         # Resolve which session "focuses" the dashboard view. Priority:
         # 1. User tap (FOCUSED_SID) if still valid
@@ -485,8 +522,8 @@ def build_heartbeat() -> dict:
         if sid and sid in SESSION_META:
             m = SESSION_META[sid]
             hb["project"] = m.get("project", "")
-            hb["branch"]  = m.get("branch", "")
-            hb["dirty"]   = m.get("dirty", 0)
+            hb["branch"] = m.get("branch", "")
+            hb["dirty"] = m.get("dirty", 0)
 
         # Per-session current-turn context usage → the number the budget
         # bar on the device should compare against the model's window.
@@ -499,12 +536,16 @@ def build_heartbeat() -> dict:
         # legacy global (rarely populated since hook payloads don't carry
         # a `model` field).
         s_model = SESSION_MODEL.get(sid) if sid else None
-        if s_model:       hb["model"] = s_model
-        elif MODEL_NAME:   hb["model"] = MODEL_NAME
+        if s_model:
+            hb["model"] = s_model
+        elif MODEL_NAME:
+            hb["model"] = MODEL_NAME
 
         a_msg = SESSION_ASSISTANT.get(sid) if sid else None
-        if a_msg:   hb["assistant_msg"] = a_msg
-        elif ASSISTANT_MSG: hb["assistant_msg"] = ASSISTANT_MSG
+        if a_msg:
+            hb["assistant_msg"] = a_msg
+        elif ASSISTANT_MSG:
+            hb["assistant_msg"] = ASSISTANT_MSG
     return hb
 
 
@@ -534,16 +575,21 @@ def heartbeat_loop():
 # Model + transcript helpers (unchanged)
 # -----------------------------------------------------------------------------
 
+
 def short_model(full: str) -> str:
-    if not full: return ""
+    if not full:
+        return ""
     import re
+
     s = full.lower()
     family = "Claude"
     for tag, label in (("opus", "Opus"), ("sonnet", "Sonnet"), ("haiku", "Haiku")):
         if tag in s:
-            family = label; break
+            family = label
+            break
     m = re.search(r"(\d+)[\.\-](\d+)", s)
-    if m: return f"{family} {m.group(1)}.{m.group(2)}"
+    if m:
+        return f"{family} {m.group(1)}.{m.group(2)}"
     return family if family != "Claude" else full[:28]
 
 
@@ -563,9 +609,12 @@ def extract_session_context(path: str) -> int:
         lines = data.decode("utf-8", errors="replace").splitlines()
         for line in reversed(lines):
             line = line.strip()
-            if not line or not line.startswith("{"): continue
-            try: obj = json.loads(line)
-            except json.JSONDecodeError: continue
+            if not line or not line.startswith("{"):
+                continue
+            try:
+                obj = json.loads(line)
+            except json.JSONDecodeError:
+                continue
             msg = obj.get("message", obj)
             if not isinstance(msg, dict) or msg.get("role") != "assistant":
                 continue
@@ -600,9 +649,12 @@ def extract_session_model(path: str) -> str:
         lines = data.decode("utf-8", errors="replace").splitlines()
         for line in reversed(lines):
             line = line.strip()
-            if not line or not line.startswith("{"): continue
-            try: obj = json.loads(line)
-            except json.JSONDecodeError: continue
+            if not line or not line.startswith("{"):
+                continue
+            try:
+                obj = json.loads(line)
+            except json.JSONDecodeError:
+                continue
             msg = obj.get("message", obj)
             if not isinstance(msg, dict) or msg.get("role") != "assistant":
                 continue
@@ -630,11 +682,15 @@ def extract_last_assistant(path: str) -> str:
             line = line.strip()
             if not line or not line.startswith("{"):
                 continue
-            try: obj = json.loads(line)
-            except json.JSONDecodeError: continue
+            try:
+                obj = json.loads(line)
+            except json.JSONDecodeError:
+                continue
             msg = obj.get("message", obj)
-            if not isinstance(msg, dict): continue
-            if msg.get("role") != "assistant": continue
+            if not isinstance(msg, dict):
+                continue
+            if msg.get("role") != "assistant":
+                continue
             content = msg.get("content")
             text = ""
             if isinstance(content, str):
@@ -643,7 +699,8 @@ def extract_last_assistant(path: str) -> str:
                 for block in content:
                     if isinstance(block, dict) and block.get("type") == "text":
                         text = block.get("text", "")
-                        if text: break
+                        if text:
+                            break
             text = (text or "").strip()
             if text:
                 return " ".join(text.split())[:220]
@@ -656,8 +713,10 @@ def extract_last_assistant(path: str) -> str:
 # HTTP handler — unchanged in terms of semantics.
 # -----------------------------------------------------------------------------
 
+
 class HookHandler(BaseHTTPRequestHandler):
-    def log_message(self, fmt, *args): pass
+    def log_message(self, fmt, *args):
+        pass
 
     def do_POST(self):
         try:
@@ -679,7 +738,8 @@ class HookHandler(BaseHTTPRequestHandler):
         for k in ("model", "model_id", "assistant_model"):
             v = payload.get(k)
             if isinstance(v, str) and v:
-                MODEL_NAME = short_model(v); break
+                MODEL_NAME = short_model(v)
+                break
 
         tp = payload.get("transcript_path")
         if isinstance(tp, str) and tp:
@@ -709,14 +769,21 @@ class HookHandler(BaseHTTPRequestHandler):
                     BUMP_EVENT.set()
 
         try:
-            if   event == "SessionStart":      resp = self._session_start(payload)
-            elif event == "Stop":              resp = self._session_stop(payload)
-            elif event == "UserPromptSubmit":  resp = self._user_prompt(payload)
-            elif event == "PreToolUse":        resp = self._pretool(payload)
-            elif event == "PostToolUse":       resp = self._posttool(payload)
-            else:                              resp = {}
+            if event == "SessionStart":
+                resp = self._session_start(payload)
+            elif event == "Stop":
+                resp = self._session_stop(payload)
+            elif event == "UserPromptSubmit":
+                resp = self._user_prompt(payload)
+            elif event == "PreToolUse":
+                resp = self._pretool(payload)
+            elif event == "PostToolUse":
+                resp = self._posttool(payload)
+            else:
+                resp = {}
         except Exception as e:
-            log(f"[hook] handler error: {e!r}"); resp = {}
+            log(f"[hook] handler error: {e!r}")
+            resp = {}
 
         self._reply(200, resp)
 
@@ -726,13 +793,16 @@ class HookHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
-        try: self.wfile.write(body)
-        except BrokenPipeError: pass
+        try:
+            self.wfile.write(body)
+        except BrokenPipeError:
+            pass
 
     def _session_start(self, p):
         sid = p.get("session_id", "")
         with STATE_LOCK:
-            SESSIONS_TOTAL.add(sid); SESSIONS_RUNNING.add(sid)
+            SESSIONS_TOTAL.add(sid)
+            SESSIONS_RUNNING.add(sid)
         proj = (SESSION_META.get(sid) or {}).get("project", "")
         add_transcript(f"session: {proj}" if proj else "session started")
         BUMP_EVENT.set()
@@ -742,25 +812,28 @@ class HookHandler(BaseHTTPRequestHandler):
         sid = p.get("session_id", "")
         with STATE_LOCK:
             SESSIONS_RUNNING.discard(sid)
-        add_transcript("session done"); BUMP_EVENT.set()
+        add_transcript("session done")
+        BUMP_EVENT.set()
         return {}
 
     def _user_prompt(self, p):
         prompt = (p.get("prompt") or "").strip().replace("\n", " ")
         if prompt:
-            add_transcript(f"> {prompt[:60]}"); BUMP_EVENT.set()
+            add_transcript(f"> {prompt[:60]}")
+            BUMP_EVENT.set()
         return {}
 
     def _posttool(self, p):
         tool = p.get("tool_name", "?")
-        add_transcript(f"{tool} done"); BUMP_EVENT.set()
+        add_transcript(f"{tool} done")
+        BUMP_EVENT.set()
         return {}
 
     def _pretool(self, p):
         global ACTIVE_PROMPT
-        sid  = p.get("session_id", "")
+        sid = p.get("session_id", "")
         tool = p.get("tool_name", "?")
-        tin  = p.get("tool_input") or {}
+        tin = p.get("tool_input") or {}
 
         # Sessions running with --dangerously-skip-permissions (or the
         # equivalent in-session toggle) already opted out of permission
@@ -770,11 +843,13 @@ class HookHandler(BaseHTTPRequestHandler):
         if p.get("permission_mode") == "bypassPermissions":
             add_transcript(f"{tool} (bypass)")
             BUMP_EVENT.set()
-            return {"hookSpecificOutput": {
-                "hookEventName": "PreToolUse",
-                "permissionDecision": "allow",
-                "permissionDecisionReason": "bypass-permissions mode",
-            }}
+            return {
+                "hookSpecificOutput": {
+                    "hookEventName": "PreToolUse",
+                    "permissionDecision": "allow",
+                    "permissionDecisionReason": "bypass-permissions mode",
+                }
+            }
 
         hint = hint_from_tool(tool, tin)
         body = body_from_tool(tool, tin)
@@ -785,10 +860,14 @@ class HookHandler(BaseHTTPRequestHandler):
             qs = tin.get("questions")
             if isinstance(qs, list) and qs and isinstance(qs[0], dict):
                 for o in (qs[0].get("options") or [])[:4]:
-                    option_labels.append(str(o.get("label")) if isinstance(o, dict) else str(o))
+                    option_labels.append(
+                        str(o.get("label")) if isinstance(o, dict) else str(o)
+                    )
             else:
                 for o in (tin.get("options") or [])[:4]:
-                    option_labels.append(str(o.get("label")) if isinstance(o, dict) else str(o))
+                    option_labels.append(
+                        str(o.get("label")) if isinstance(o, dict) else str(o)
+                    )
 
         prompt_id = f"req_{int(time.time() * 1000)}_{os.getpid()}"
         event = threading.Event()
@@ -796,8 +875,13 @@ class HookHandler(BaseHTTPRequestHandler):
         PENDING[prompt_id] = holder
 
         prompt_obj = {
-            "id": prompt_id, "tool": tool, "hint": hint, "body": body,
-            "kind": kind, "option_labels": option_labels, "session_id": sid,
+            "id": prompt_id,
+            "tool": tool,
+            "hint": hint,
+            "body": body,
+            "kind": kind,
+            "option_labels": option_labels,
+            "session_id": sid,
         }
 
         global ACTIVE_PROMPT
@@ -831,42 +915,61 @@ class HookHandler(BaseHTTPRequestHandler):
             BUMP_EVENT.set()
 
         if isinstance(decision, str) and decision.startswith("option:"):
-            try: idx = int(decision.split(":", 1)[1])
-            except ValueError: idx = -1
+            try:
+                idx = int(decision.split(":", 1)[1])
+            except ValueError:
+                idx = -1
             label = option_labels[idx] if 0 <= idx < len(option_labels) else ""
-            add_transcript(f"{tool} → {label[:30]}"); BUMP_EVENT.set()
-            return {"hookSpecificOutput": {
-                "hookEventName": "PreToolUse",
-                "permissionDecision": "deny",
-                "permissionDecisionReason": (
-                    f"The user answered on the M5Paper buddy device: "
-                    f"'{label}' (option {idx + 1}). Proceed using this answer "
-                    f"directly — do NOT call AskUserQuestion again."
-                ),
-            }}
+            add_transcript(f"{tool} → {label[:30]}")
+            BUMP_EVENT.set()
+            return {
+                "hookSpecificOutput": {
+                    "hookEventName": "PreToolUse",
+                    "permissionDecision": "deny",
+                    "permissionDecisionReason": (
+                        f"The user answered on the M5Paper buddy device: "
+                        f"'{label}' (option {idx + 1}). Proceed using this answer "
+                        f"directly — do NOT call AskUserQuestion again."
+                    ),
+                }
+            }
 
         if decision == "once":
-            add_transcript(f"{tool} allow"); BUMP_EVENT.set()
-            return {"hookSpecificOutput": {
-                "hookEventName": "PreToolUse",
-                "permissionDecision": "allow",
-                "permissionDecisionReason": "Approved on M5Paper",
-            }}
+            add_transcript(f"{tool} allow")
+            BUMP_EVENT.set()
+            return {
+                "hookSpecificOutput": {
+                    "hookEventName": "PreToolUse",
+                    "permissionDecision": "allow",
+                    "permissionDecisionReason": "Approved on M5Paper",
+                }
+            }
         if decision == "deny":
-            add_transcript(f"{tool} deny"); BUMP_EVENT.set()
-            reason = ("The user cancelled this question on the M5Paper "
-                      "buddy without answering. Ask them directly in the "
-                      "terminal instead.") if kind == "question" else "Denied on M5Paper"
-            return {"hookSpecificOutput": {
-                "hookEventName": "PreToolUse",
-                "permissionDecision": "deny",
-                "permissionDecisionReason": reason,
-            }}
-        add_transcript(f"{tool} timeout"); BUMP_EVENT.set()
+            add_transcript(f"{tool} deny")
+            BUMP_EVENT.set()
+            reason = (
+                (
+                    "The user cancelled this question on the M5Paper "
+                    "buddy without answering. Ask them directly in the "
+                    "terminal instead."
+                )
+                if kind == "question"
+                else "Denied on M5Paper"
+            )
+            return {
+                "hookSpecificOutput": {
+                    "hookEventName": "PreToolUse",
+                    "permissionDecision": "deny",
+                    "permissionDecisionReason": reason,
+                }
+            }
+        add_transcript(f"{tool} timeout")
+        BUMP_EVENT.set()
         return {}
 
 
 # -----------------------------------------------------------------------------
+
 
 def tz_offset_seconds() -> int:
     now = time.time()
@@ -879,11 +982,17 @@ def pick_transport(kind: str) -> Transport:
     """Resolve --transport flag to a concrete Transport. 'auto' tries
     serial first (zero-setup, no BLE permission dance) and falls back
     to BLE if no USB device is found."""
-    candidates = sorted(glob.glob("/dev/cu.usbserial-*") + glob.glob("/dev/ttyUSB*"))
+    candidates = sorted(
+        glob.glob("/dev/cu.usbserial-*")
+        + glob.glob("/dev/ttyUSB*")
+        + glob.glob("/dev/ttyACM*")
+    )
 
     if kind == "serial":
         if not candidates:
-            sys.exit("--transport serial requested but no /dev/cu.usbserial-* found")
+            sys.exit(
+                "--transport serial requested but no serial device found (/dev/cu.usbserial-*, /dev/ttyUSB*, /dev/ttyACM*)"
+            )
         return SerialTransport(candidates[0])
 
     if kind == "ble":
@@ -905,10 +1014,14 @@ def main():
     ap.add_argument("--transport", choices=("auto", "serial", "ble"), default="auto")
     ap.add_argument("--http-port", type=int, default=9876)
     ap.add_argument("--owner", default=os.environ.get("USER", ""))
-    ap.add_argument("--budget", type=int, default=200000,
-                    help="context-window limit for the budget bar (default 200K = "
-                         "Claude 4.6 standard context; set 1000000 for 1M-context "
-                         "beta; set 0 to hide the bar)")
+    ap.add_argument(
+        "--budget",
+        type=int,
+        default=200000,
+        help="context-window limit for the budget bar (default 200K = "
+        "Claude 4.6 standard context; set 1000000 for 1M-context "
+        "beta; set 0 to hide the bar)",
+    )
     args = ap.parse_args()
 
     BUDGET_LIMIT = max(0, args.budget)

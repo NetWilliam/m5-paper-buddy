@@ -1,0 +1,5 @@
+dependencies:
+  espressif/cjson: "^1.7"
+  espressif/esp_lvgl_port: "^2"
+  lvgl/lvgl: "^9"
+  espressif/button: "^3"

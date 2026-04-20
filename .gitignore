@@ -6,3 +6,10 @@
 # tracked and only ignore scratch subfolders.
 data/characters/
 data/.tmp/
+
+*.jpg
+*.png
+*.raw
+
+firmware/managed_components/*
+firmware/build/*
