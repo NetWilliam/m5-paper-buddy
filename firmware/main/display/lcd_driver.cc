@@ -80,6 +80,18 @@ void LcdDriver::Clear() {
     RLCD_Display();
 }
 
+void LcdDriver::DisplayRaw(const uint8_t* raw) {
+    for (int y = 0; y < RLCD_HEIGHT; y++) {
+        for (int x = 0; x < RLCD_WIDTH; x++) {
+            int idx = (y * RLCD_WIDTH + x) / 8;
+            int bit = 7 - (x % 8);
+            uint8_t color = (raw[idx] >> bit) & 1;
+            SetPixel(disp_buffer_, x, y, color);
+        }
+    }
+    RLCD_Display();
+}
+
 void LcdDriver::InitSpi() {
     ESP_LOGI(TAG, "Initializing SPI bus");
     spi_bus_config_t buscfg = {};

@@ -9,6 +9,7 @@ idf_component_register(
         "protocol/line_protocol.cc"
         "state/state_parser.cc"
         "state/stats.cc"
+        "display/spiffs_image.cc"
     INCLUDE_DIRS "."
     REQUIRES
         driver

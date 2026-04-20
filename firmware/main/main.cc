@@ -10,6 +10,7 @@
 #include "config.h"
 #include "display/lcd_driver.h"
 #include "display/buddy_display.h"
+#include "display/spiffs_image.h"
 #include "button/button_handler.h"
 #include "transport/serial_jtag_transport.h"
 #include "transport/ble_transport.h"
@@ -24,6 +25,8 @@ static const char* TAG = "main";
 // ── Constants ──
 static constexpr uint32_t CONNECTION_TIMEOUT_MS = 15000;  // 15s no data = disconnected
 static constexpr uint32_t PROMPT_TIMEOUT_MS     = 30000;  // 30s mirror bridge timeout
+static constexpr uint32_t IDLE_IMAGE_TIMEOUT_MS = 5000;   // 5s no data = idle image mode (TODO: 300000)
+static constexpr uint32_t IDLE_IMAGE_CYCLE_MS   = 15000;  // 15s per image
 
 // ── Event bits for event-driven wakeup ──
 static constexpr EventBits_t kEventDataReady  = (1 << 0);
@@ -45,6 +48,14 @@ static char g_bt_name[16] = "Claude";
 static uint32_t g_prompt_arrived_ms = 0;
 static bool g_response_sent = false;
 static char g_last_prompt_id[40] = "";
+
+// ── Idle image state ──
+enum DisplayMode { MODE_DASHBOARD, MODE_APPROVAL, MODE_IDLE_IMAGE };
+static DisplayMode g_display_mode = MODE_DASHBOARD;
+static SpiffsImage g_spiffs;
+static uint8_t* g_image_buf = nullptr;
+static int g_image_slot = 0;
+static uint32_t g_last_image_cycle_ms = 0;
 
 // ── Dual-write send: both USB and BLE ──
 static void sendLine(const char* json) {
@@ -99,12 +110,21 @@ extern "C" void app_main() {
     statsLoad();
     petNameLoad();
 
-    // 3. Buttons
+    // 3. SPIFFS for idle images
+    g_spiffs.Init();
+    int n_images = g_spiffs.GetSlotCount();
+    if (n_images > 0) {
+        g_image_buf = static_cast<uint8_t*>(heap_caps_malloc(SpiffsImage::IMAGE_SIZE, MALLOC_CAP_SPIRAM));
+        assert(g_image_buf && "Failed to allocate image buffer");
+        ESP_LOGI(TAG, "SPIFFS has %d idle images", n_images);
+    }
+
+    // 4. Buttons
     static ButtonHandler buttons;
     g_buttons = &buttons;
     buttons.Init();
 
-    // 4. Display UI
+    // 5. Display UI
     static BuddyDisplay display;
     g_display = &display;
     lvgl_port_lock(0);
@@ -112,12 +132,12 @@ extern "C" void app_main() {
     display.ShowSplash(g_bt_name);
     lvgl_port_unlock();
 
-    // 5. Protocol
+    // 6. Protocol
     static LineProtocol protocol;
     g_protocol = &protocol;
     protocol.OnMessage(OnMessage);
 
-    // 6. USB transport
+    // 7. USB transport
     static SerialJtagTransport usb;
     g_usb = &usb;
     if (!usb.Init()) {
@@ -127,7 +147,7 @@ extern "C" void app_main() {
         usb.OnData(OnUsbData);
     }
 
-    // 7. BLE transport
+    // 8. BLE transport
     static BleTransport ble;
     g_ble = &ble;
     ble.Init();
@@ -224,15 +244,54 @@ extern "C" void app_main() {
         bool prompt_changed = (inPrompt != was_in_prompt);
         was_in_prompt = inPrompt;
 
-        if (can_refresh || prompt_changed) {
-            lvgl_port_lock(0);
-            if (inPrompt) {
-                g_display->ShowApproval(snap, now - g_prompt_arrived_ms);
-            } else {
-                g_display->ShowDashboard(snap);
-            }
-            lvgl_port_unlock();
-            last_refresh_ms = now;
+        // Any activity (data, prompt change, button) exits idle image mode
+        bool has_activity = prompt_changed || (events != 0);
+
+        // Determine display mode
+        DisplayMode target_mode;
+        if (inPrompt) {
+            target_mode = MODE_APPROVAL;
+        } else if (g_image_buf && !snap.connected &&
+                   (now - snap.lastUpdated) > IDLE_IMAGE_TIMEOUT_MS) {
+            target_mode = MODE_IDLE_IMAGE;
+        } else {
+            target_mode = MODE_DASHBOARD;
         }
+
+        bool mode_changed = (target_mode != g_display_mode);
+        if (has_activity && g_display_mode == MODE_IDLE_IMAGE) {
+            mode_changed = true;
+            g_display_mode = MODE_DASHBOARD;
+            target_mode = MODE_DASHBOARD;
+        }
+
+        if (target_mode == MODE_APPROVAL || target_mode == MODE_DASHBOARD) {
+            if (can_refresh || mode_changed) {
+                lvgl_port_lock(0);
+                if (target_mode == MODE_APPROVAL) {
+                    g_display->ShowApproval(snap, now - g_prompt_arrived_ms);
+                } else {
+                    g_display->ShowDashboard(snap);
+                }
+                lvgl_port_unlock();
+                last_refresh_ms = now;
+            }
+        } else if (target_mode == MODE_IDLE_IMAGE) {
+            if (mode_changed || (now - g_last_image_cycle_ms) >= IDLE_IMAGE_CYCLE_MS) {
+                if (g_spiffs.LoadImage(g_image_buf, SpiffsImage::IMAGE_SIZE, g_image_slot) == SpiffsImage::IMAGE_SIZE) {
+                    lvgl_port_lock(0);
+                    g_lcd->DisplayRaw(g_image_buf);
+                    lvgl_port_unlock();
+                }
+                g_last_image_cycle_ms = now;
+                g_image_slot = (g_image_slot + 1) % SpiffsImage::MAX_SLOTS;
+                // Skip empty slots
+                for (int i = 0; i < SpiffsImage::MAX_SLOTS && !g_spiffs.HasCustomImage(g_image_slot); i++) {
+                    g_image_slot = (g_image_slot + 1) % SpiffsImage::MAX_SLOTS;
+                }
+            }
+        }
+
+        g_display_mode = target_mode;
     }
 }

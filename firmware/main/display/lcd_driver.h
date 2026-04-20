@@ -16,6 +16,10 @@ public:
     void Clear();
     lv_display_t* GetDisplay() const { return display_; }
 
+    /// Display a linear 1-bit raw image (MSB first, row-major, 400x300).
+    /// Converts from linear format to ST7305 block format and sends via SPI.
+    void DisplayRaw(const uint8_t* raw);
+
 private:
     void InitSpi();
     void InitRstGpio();
