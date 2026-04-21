@@ -10,6 +10,7 @@ idf_component_register(
         "state/state_parser.cc"
         "state/stats.cc"
         "display/spiffs_image.cc"
+        "display/lv_font_cjk_ext_14.c"
     INCLUDE_DIRS "."
     REQUIRES
         driver

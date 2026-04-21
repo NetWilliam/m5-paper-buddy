@@ -27,7 +27,8 @@ firmware/
 │   ├── idf_component.yml     # 托管依赖: LVGL, cJSON, button, esp_lvgl_port
 │   ├── display/
 │   │   ├── lcd_driver.h/.cc  # SPI + ST7305 驱动 + LVGL flush callback
-│   │   └── buddy_display.h/.cc # LVGL UI (仪表盘 / 审批卡片 / 启动画面)
+│   │   ├── buddy_display.h/.cc # LVGL UI (仪表盘 / 审批卡片 / 启动画面)
+│   │   └── lv_font_cjk_ext_14.c # CJK 扩展字体 (20K+ 字, 编译内嵌)
 │   ├── button/
 │   │   └── button_handler.h/.cc # iot_button + FreeRTOS event group
 │   ├── transport/
@@ -69,6 +70,11 @@ idf.py -p /dev/ttyACM0 flash
 ```
 
 > 如果端口不同，用 `-p` 指定。macOS 上可能是 `/dev/cu.usbmodem*`。
+>
+> **大固件烧录提示**: 含 CJK 字体的固件约 1.5MB。USB-serial-jtag 偶尔在写大文件时断连。如果烧录失败:
+> 1. 确认设备端口 (`ls /dev/ttyACM*`)，可能不是 `ttyACM0`
+> 2. 降低波特率: `idf.py -p /dev/ttyACM1 -b 115200 flash`
+> 3. 重新插拔 USB 线后重试
 
 ### 查看日志
 
@@ -186,7 +192,7 @@ daemon 启动后会输出配置指引。或者手动将 `plugin/settings/hooks.j
 
 - **BOOT 键 (GPIO0)** 是 ESP32-S3 strapping pin。按住 BOOT 再上电/复位会进入下载模式。正常使用时先松开 BOOT 再复位。
 - **RLCD 刷新**约 450ms，idle 状态下 5 秒刷新一次，审批模式下 1 秒一次。
-- **字体**: 使用 LVGL 内置 Montserrat (14/16/20/36pt)，暂不支持 CJK。
+- **字体**: Montserrat (14/16/20/36pt) + 自定义 CJK 扩展字体 (14pt, 20000+ 字符)。CJK 字体编译进固件，无需额外文件。
 
 ## 与 M5Paper 版本的区别
 
@@ -196,6 +202,92 @@ daemon 启动后会输出配置指引。或者手动将 `plugin/settings/hooks.j
 | 显示 | 540×960 e-ink, 16 灰度, IT8951 | 400×300 RLCD, 1-bit, ST7305 |
 | 触屏 | GT911 电容触屏 | 无 |
 | 按键 | 3 (UP/PUSH/DOWN) | 2 (KEY/BOOT) |
-| CJK | TTF 字体 + LittleFS | 暂不支持 |
+| CJK | TTF 字体 + LittleFS | 编译内嵌 C 字体 (20K+ 字) |
 | 设置页 | DND / 语言切换 | 无 (2 键最小化) |
 | BLE | 完整 (NimBLE) | WIP |
+
+## CJK 字体
+
+### 工作原理
+
+CJK 字体以 **C 源码**形式编译进固件，不依赖 SPIFFS 或外部文件。固件启动时 `BuddyDisplay::LoadCjkFonts()` 通过 `extern` 引用链接好的字体对象，直接用于所有 LVGL label。
+
+**字体规格**:
+- 字体: NotoSansCJKsc-Regular (思源黑体 SC)
+- 大小: 14px, 1-bit (单色)
+- 覆盖范围:
+  - ASCII: U+0020-U+007E (95 字符)
+  - CJK 符号: U+3000-U+303F (标点、括号等)
+  - CJK 统一汉字: U+4E00-U+9FFF (20992 字符)
+  - 全角字符: U+FF00-U+FFEF (全角 ASCII、标点)
+- 源文件: `main/display/lv_font_cjk_ext_14.c` (~5.4MB)
+- 编译后二进制增量: ~380KB (固件总大小 ~1.5MB)
+
+### 新板子烧录
+
+不需要任何特殊操作。CJK 字体已编译进固件二进制:
+
+```bash
+source ~/esp/v5.5.4/esp-idf/export.sh
+cd firmware/
+idf.py build
+idf.py -p /dev/ttyACM0 flash
+```
+
+烧录完成后 CJK 自动生效，无需额外文件或配置。
+
+### 重新生成字体 (按需)
+
+如果需要修改字体大小、范围或换字体文件:
+
+```bash
+# 1. 安装 lv_font_conv
+npm install -g lv_font_conv
+
+# 2. 准备 TTF/OTF 字体文件 (需要支持 CJK)
+#    例如: NotoSansCJKsc-Regular.otf
+
+# 3. 生成 C 源码
+npx lv_font_conv \
+  --font /path/to/NotoSansCJKsc-Regular.otf \
+  --bpp 1 \
+  --size 14 \
+  --range 0x20-0x7e,0x3000-0x303f,0x4e00-0x9fff,0xff00-0xffef \
+  --format lvgl \
+  -o main/display/lv_font_cjk_ext_14.c
+
+# 4. 修复 include (lv_font_conv 生成的条件编译与 ESP-IDF 不兼容)
+#    将文件头部的:
+#      #ifdef LV_LVGL_H_INCLUDE_SIMPLE
+#    改为:
+#      #if 1
+sed -i 's/#ifdef LV_LVGL_H_INCLUDE_SIMPLE/#if 1/' \
+  main/display/lv_font_cjk_ext_14.c
+
+# 5. 编译 & 烧录
+idf.py build
+idf.py -p /dev/ttyACM0 flash
+```
+
+**减小字体体积**: 如果不需要完整 CJK 范围，缩小 `--range` 参数。例如仅覆盖常用汉字 (GB2312 级别):
+```
+--range 0x20-0x7e,0x3000-0x303f,0x4e00-0x77ff,0xff00-0xffef
+```
+这会将覆盖字符从 20992 减至约 12000，固件从 1.5MB 降至 1.15MB。
+
+### 关键 sdkconfig 选项
+
+| 选项 | 值 | 作用 |
+| --- | --- | --- |
+| `CONFIG_LV_FONT_FMT_TXT_LARGE` | y | 支持大字体 (>65536 glyph) |
+| `CONFIG_LV_FONT_SOURCE_HAN_SANS_SC_14_CJK` | y | LVGL 内置 CJK 基础字体 (备用) |
+| `CONFIG_LV_FONT_MONTSERRAT_14` | y | Latin 主字体 |
+
+### 相关源码
+
+| 文件 | 作用 |
+| --- | --- |
+| `main/display/lv_font_cjk_ext_14.c` | CJK 字体数据 (lv_font_conv 生成) |
+| `main/display/buddy_display.cc` | `LoadCjkFonts()` 加载字体，`CreateScreens()` 应用到所有 label |
+| `main/CMakeLists.txt` | SRCS 列表包含字体文件 |
+| `sdkconfig.defaults` | `LV_FONT_FMT_TXT_LARGE=y` 等编译选项 |

@@ -24,8 +24,12 @@ public:
     /// Show splash screen.
     void ShowSplash(const char* deviceName);
 
+    /// Whether CJK font loaded successfully.
+    bool HasCjkFont() const { return cjk_font_14_ != nullptr; }
+
 private:
     void CreateScreens();
+    void LoadCjkFonts();
     void UpdateDashboardContent(const TamaState& state);
     void UpdateApprovalContent(const TamaState& state, uint32_t waitedMs);
 
@@ -55,6 +59,10 @@ private:
     // Tracking
     char last_prompt_id_[40] = {};
     bool showing_approval_ = false;
+
+    // CJK fonts (loaded from SPIFFS, nullable)
+    lv_font_t* cjk_font_14_ = nullptr;
+    lv_font_t* cjk_font_16_ = nullptr;
 };
 
 #endif // _BUDDY_DISPLAY_H_

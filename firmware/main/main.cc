@@ -25,7 +25,7 @@ static const char* TAG = "main";
 // ── Constants ──
 static constexpr uint32_t CONNECTION_TIMEOUT_MS = 15000;  // 15s no data = disconnected
 static constexpr uint32_t PROMPT_TIMEOUT_MS     = 30000;  // 30s mirror bridge timeout
-static constexpr uint32_t IDLE_IMAGE_TIMEOUT_MS = 5000;   // 5s no data = idle image mode (TODO: 300000)
+static constexpr uint32_t IDLE_IMAGE_TIMEOUT_MS = 300000;  // 5 min no data = idle image mode
 static constexpr uint32_t IDLE_IMAGE_CYCLE_MS   = 15000;  // 15s per image
 
 // ── Event bits for event-driven wakeup ──

@@ -10,6 +10,7 @@ data/.tmp/
 *.jpg
 *.png
 *.raw
+*.bin
 
 firmware/managed_components/*
 firmware/build/*
