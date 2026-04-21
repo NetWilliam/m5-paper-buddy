@@ -34,7 +34,7 @@ firmware/
 │   ├── transport/
 │   │   ├── transport.h        # Transport 抽象接口
 │   │   ├── serial_jtag_transport.h/.cc  # USB-serial-jtag
-│   │   └── ble_transport.h/.cc          # BLE Nordic UART Service (WIP)
+│   │   └── ble_transport.h/.cc          # BLE Nordic UART Service (NimBLE)
 │   ├── protocol/
 │   │   └── line_protocol.h/.cc # 行缓冲 JSON 解析器
 │   └── state/
@@ -204,7 +204,7 @@ daemon 启动后会输出配置指引。或者手动将 `plugin/settings/hooks.j
 | 按键 | 3 (UP/PUSH/DOWN) | 2 (KEY/BOOT) |
 | CJK | TTF 字体 + LittleFS | 编译内嵌 C 字体 (20K+ 字) |
 | 设置页 | DND / 语言切换 | 无 (2 键最小化) |
-| BLE | 完整 (NimBLE) | WIP |
+| BLE | 完整 (NimBLE) | NimBLE NUS (配对显示 passkey) |
 
 ## CJK 字体
 
@@ -291,3 +291,48 @@ idf.py -p /dev/ttyACM0 flash
 | `main/display/buddy_display.cc` | `LoadCjkFonts()` 加载字体，`CreateScreens()` 应用到所有 label |
 | `main/CMakeLists.txt` | SRCS 列表包含字体文件 |
 | `sdkconfig.defaults` | `LV_FONT_FMT_TXT_LARGE=y` 等编译选项 |
+
+## BLE (Nordic UART Service)
+
+### 工作原理
+
+固件内置 NimBLE BLE 栈，实现 Nordic UART Service (NUS) 协议。设备作为 BLE peripheral 广播 "Paper Buddy"，支持 Secure Connections + Legacy 配对，配对时在串口日志中显示 6 位 passkey。
+
+**GATT 服务**:
+- Service UUID: `6E400001-B5A3-F393-E0A9-E50E24DCCA9E`
+- TX characteristic (notify): `6E400003-...` — 设备 → 客户端
+- RX characteristic (write): `6E400002-...` — 客户端 → 设备
+
+**传输协议**: 与 USB-serial-jtag 相同的行 JSON 协议。BLE 连接后，数据同时从 USB 和 BLE 发送（双通道）。
+
+**安全配置**:
+- IO Capability: Display Only (设备显示 passkey，客户端输入)
+- Secure Connections + Legacy 配对均启用
+- Bonding 启用，密钥分发 (encryption + identity)
+- Repeat pairing 自动删除旧 bond 重试
+
+**MTU**: 默认 23 字节（可协商至 517）。发送时自动按 MTU-3 分片。
+
+### 连接
+
+1. 用 BLE 客户端（nRF Connect、bluetoothctl 等）扫描 "Paper Buddy"
+2. 连接，配对时输入设备日志中显示的 6 位 passkey
+3. Enable TX notify
+4. 向 RX characteristic 写入行 JSON 数据（与 USB 相同协议）
+
+### 关键 sdkconfig 选项
+
+| 选项 | 值 | 作用 |
+| --- | --- | --- |
+| `CONFIG_BT_ENABLED` | y | 启用 BT 控制器 |
+| `CONFIG_BT_NIMBLE_ENABLED` | y | 使用 NimBLE 栈 |
+| `CONFIG_BT_NIMBLE_SM_SC` | y | Secure Connections |
+| `CONFIG_BT_NIMBLE_SM_LEGACY` | y | Legacy 配对 |
+
+### 相关源码
+
+| 文件 | 作用 |
+| --- | --- |
+| `main/transport/ble_transport.h/.cc` | NimBLE NUS 实现 |
+| `main/transport/transport.h` | Transport 抽象接口 |
+| `main/main.cc` | BLE 初始化 + 双通道发送 |

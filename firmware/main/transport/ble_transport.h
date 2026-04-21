@@ -16,14 +16,23 @@ public:
     size_t Poll() override;
 
     bool IsConnected() const;
+    void SetConnected(bool v) { connected_ = v; }
     uint32_t GetPasskey() const;
+    DataCallback& GetDataCallback() { return data_callback_; }
+
+    // Called by C-linkage NimBLE callbacks
+    void StartAdvertising();
 
 private:
     static constexpr const char* TAG = "BleTransport";
     bool initialized_ = false;
     bool connected_ = false;
     DataCallback data_callback_;
-    uint32_t passkey_ = 0;
+
+    // NimBLE host callbacks
+    static void OnSync();
+    static void OnReset(int reason);
+    static void HostTask(void* param);
 };
 
 #endif // _BLE_TRANSPORT_H_

@@ -152,6 +152,7 @@ extern "C" void app_main() {
     g_ble = &ble;
     ble.Init();
     ble.Open();
+    ble.OnData(OnUsbData);  // same protocol handler as USB
 
     ESP_LOGI(TAG, "All subsystems ready, entering main loop");
 
