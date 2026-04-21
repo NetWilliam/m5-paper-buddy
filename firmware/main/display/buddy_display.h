@@ -24,6 +24,9 @@ public:
     /// Show splash screen.
     void ShowSplash(const char* deviceName);
 
+    /// Show BLE pairing passkey.
+    void ShowPasskey(uint32_t passkey);
+
     /// Whether CJK font loaded successfully.
     bool HasCjkFont() const { return cjk_font_14_ != nullptr; }
 
@@ -56,9 +59,14 @@ private:
     lv_obj_t* approve_wait_label_ = nullptr;
     lv_obj_t* approve_hints_label_ = nullptr;
 
+    // Passkey screen
+    lv_obj_t* passkey_screen_ = nullptr;
+    lv_obj_t* passkey_label_ = nullptr;
+
     // Tracking
     char last_prompt_id_[40] = {};
     bool showing_approval_ = false;
+    bool showing_passkey_ = false;
 
     // CJK fonts (loaded from SPIFFS, nullable)
     lv_font_t* cjk_font_14_ = nullptr;

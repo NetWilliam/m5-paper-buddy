@@ -198,6 +198,7 @@ size_t BleTransport::Poll() {
 
 bool BleTransport::IsConnected() const { return connected_; }
 uint32_t BleTransport::GetPasskey() const { return s_passkey; }
+void BleTransport::ClearPasskey() { s_passkey = 0; }
 
 // ── NimBLE callbacks (static / free functions) ──
 
@@ -336,6 +337,10 @@ static int ble_gap_event_handler(struct ble_gap_event* event, void* arg) {
             pkey.passkey = s_passkey;
             ESP_LOGI(TAG, "BLE passkey: %06" PRIu32, s_passkey);
             ble_sm_inject_io(event->passkey.conn_handle, &pkey);
+            if (s_instance) {
+                auto& cb = s_instance->GetPasskeyCallback();
+                if (cb) cb(s_passkey);
+            }
         }
         break;
     }
@@ -346,6 +351,19 @@ static int ble_gap_event_handler(struct ble_gap_event* event, void* arg) {
         ble_store_util_delete_peer(&desc.peer_id_addr);
         return BLE_GAP_REPEAT_PAIRING_RETRY;
     }
+
+    case BLE_GAP_EVENT_ENC_CHANGE:
+        if (event->enc_change.status == 0) {
+            ESP_LOGI(TAG, "BLE encryption established");
+            s_passkey = 0;
+            if (s_instance) {
+                auto& cb = s_instance->GetPasskeyCallback();
+                if (cb) cb(0);
+            }
+        } else {
+            ESP_LOGW(TAG, "BLE encryption failed: %d", event->enc_change.status);
+        }
+        break;
 
     default:
         break;

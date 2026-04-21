@@ -31,7 +31,8 @@ static constexpr uint32_t IDLE_IMAGE_CYCLE_MS   = 15000;  // 15s per image
 // ── Event bits for event-driven wakeup ──
 static constexpr EventBits_t kEventDataReady  = (1 << 0);
 static constexpr EventBits_t kEventButton      = (1 << 1);
-static constexpr EventBits_t kEventAll         = kEventDataReady | kEventButton;
+static constexpr EventBits_t kEventPasskey     = (1 << 2);
+static constexpr EventBits_t kEventAll         = kEventDataReady | kEventButton | kEventPasskey;
 
 // ── Global context ──
 static LcdDriver*           g_lcd       = nullptr;
@@ -50,8 +51,9 @@ static bool g_response_sent = false;
 static char g_last_prompt_id[40] = "";
 
 // ── Idle image state ──
-enum DisplayMode { MODE_DASHBOARD, MODE_APPROVAL, MODE_IDLE_IMAGE };
+enum DisplayMode { MODE_DASHBOARD, MODE_APPROVAL, MODE_IDLE_IMAGE, MODE_PASSKEY };
 static DisplayMode g_display_mode = MODE_DASHBOARD;
+static uint32_t g_pending_passkey = 0;
 static SpiffsImage g_spiffs;
 static uint8_t* g_image_buf = nullptr;
 static int g_image_slot = 0;
@@ -153,6 +155,10 @@ extern "C" void app_main() {
     ble.Init();
     ble.Open();
     ble.OnData(OnUsbData);  // same protocol handler as USB
+    ble.OnPasskey([](uint32_t pk) {
+        g_pending_passkey = pk;
+        xEventGroupSetBits(g_wake_event, kEventPasskey);
+    });
 
     ESP_LOGI(TAG, "All subsystems ready, entering main loop");
 
@@ -250,7 +256,9 @@ extern "C" void app_main() {
 
         // Determine display mode
         DisplayMode target_mode;
-        if (inPrompt) {
+        if (g_pending_passkey > 0) {
+            target_mode = MODE_PASSKEY;
+        } else if (inPrompt) {
             target_mode = MODE_APPROVAL;
         } else if (g_image_buf && !snap.connected &&
                    (now - snap.lastUpdated) > IDLE_IMAGE_TIMEOUT_MS) {
@@ -266,8 +274,16 @@ extern "C" void app_main() {
             target_mode = MODE_DASHBOARD;
         }
 
-        if (target_mode == MODE_APPROVAL || target_mode == MODE_DASHBOARD) {
+        if (target_mode == MODE_PASSKEY) {
+            if (mode_changed || g_display_mode != MODE_PASSKEY) {
+                lvgl_port_lock(0);
+                g_display->ShowPasskey(g_pending_passkey);
+                lvgl_port_unlock();
+                last_refresh_ms = now;
+            }
+        } else if (target_mode == MODE_APPROVAL || target_mode == MODE_DASHBOARD) {
             if (can_refresh || mode_changed) {
+                g_pending_passkey = 0;  // passkey screen no longer needed
                 lvgl_port_lock(0);
                 if (target_mode == MODE_APPROVAL) {
                     g_display->ShowApproval(snap, now - g_prompt_arrived_ms);

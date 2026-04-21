@@ -158,7 +158,7 @@ class BLETransport(Transport):
 
     def __init__(self, name_prefix="Paper Buddy", address=None):
         self._name_prefix = name_prefix
-        self._address = address          # known device address for fast reconnect
+        self._address = address
         self._loop = None
         self._client = None
         self._thread = None
@@ -166,6 +166,7 @@ class BLETransport(Transport):
         self._on_connect = None
         self._connected_evt = threading.Event()
         self._write_lock = threading.Lock()
+        self._attempt = 0
 
     def start(self, on_byte, on_connect=None):
         self._on_byte = on_byte
@@ -181,70 +182,129 @@ class BLETransport(Transport):
         except Exception as e:
             log(f"[ble] thread crashed: {e!r}")
 
+    @staticmethod
+    async def _btctl(args: list[str], timeout: int = 10) -> str:
+        """Run a bluetoothctl command and return its combined output."""
+        import subprocess
+        loop = asyncio.get_event_loop()
+        out = await loop.run_in_executor(None, lambda: subprocess.run(
+            ["bluetoothctl", *args],
+            capture_output=True, text=True, timeout=timeout,
+        ))
+        return out.stdout + out.stderr
+
+    async def _scan(self, timeout: float = 12.0):
+        """Scan and return (target_device | None, all_devices_dict).
+
+        Uses discover(return_adv=True) so we can log every device seen,
+        not just the target. Returns the dict of all devices and the
+        matched BLEDevice (or None).
+        """
+        from bleak import BleakScanner
+
+        all_devs = await BleakScanner.discover(timeout=timeout, return_adv=True)
+        target = None
+        for _addr, (dev, _adv) in all_devs.items():
+            if dev.name and dev.name.startswith(self._name_prefix):
+                target = dev
+                break
+
+        return target, all_devs
+
     async def _main(self):
         try:
             from bleak import BleakScanner, BleakClient
+            import bleak, importlib.metadata
+            log(f"[ble] bleak {importlib.metadata.version('bleak')}")
         except ImportError:
             log("[ble] bleak not installed. run: pip install bleak")
             return
 
         while True:
+            self._attempt += 1
             device = None
 
-            # Fast path: connect directly to known address (no scan needed)
+            # Remove stale BlueZ entry if we have a cached address
             if self._address:
-                log(f"[ble] connecting to {self._address} (cached)")
-                device = self._address   # BleakClient accepts a bare address string
+                log(f"[ble] removing stale BlueZ entry for {self._address}")
+                out = await self._btctl(["remove", self._address])
+                # Log non-trivial bluetoothctl output
+                if "not available" not in out.lower() and "not found" not in out.lower():
+                    for line in out.strip().splitlines():
+                        if line.strip():
+                            log(f"[ble]   btctl: {line.strip()}")
+                self._address = None
 
-            # Slow path: full BLE scan
-            if not device:
-                log(f"[ble] scanning for '{self._name_prefix}*'...")
-                try:
-                    device = await BleakScanner.find_device_by_filter(
-                        lambda d, ad: bool(d.name) and d.name.startswith(self._name_prefix),
-                        timeout=10.0,
-                    )
-                except Exception as e:
-                    log(f"[ble] scan error: {e}")
+            # Scan with full visibility into results
+            scan_timeout = 12.0
+            log(f"[ble] scan #{self._attempt} (timeout={scan_timeout}s, filter='name starts with {self._name_prefix}')")
+            try:
+                device, all_devs = await self._scan(scan_timeout)
+            except Exception as e:
+                log(f"[ble] scan error: {e}")
+                all_devs = {}
+
+            # Log all discovered devices
+            if all_devs:
+                log(f"[ble] scan found {len(all_devs)} device(s):")
+                for addr, (dev, adv) in all_devs.items():
+                    name = dev.name or "(none)"
+                    rssi = getattr(adv, "rssi", "?")
+                    svcs = []
+                    if hasattr(adv, "service_uuids") and adv.service_uuids:
+                        svcs = [str(u) for u in adv.service_uuids[:3]]
+                    svc_str = f" svc={svcs}" if svcs else ""
+                    log(f"[ble]   {addr}  {name:30s}  RSSI={rssi}{svc_str}")
+            else:
+                log("[ble] scan found 0 devices")
 
             if not device:
-                log("[ble] no device found, retrying in 5s")
+                if self._attempt % 5 == 0:
+                    log(f"[ble] {self._attempt} consecutive scan failures. Is the device powered on and advertising?")
                 await asyncio.sleep(5)
                 continue
 
-            log(f"[ble] connecting to {device}")
+            log(f"[ble] found target: {device.name} @ {device.address}")
+            self._address = device.address
+
+            # Connect
             try:
-                # Bleak's context manager handles disconnect on exit. We stay
-                # inside it as long as the link is alive.
-                async with BleakClient(device) as client:
-                    self._client = client
+                client = BleakClient(device)
+                log(f"[ble] connecting ...")
+                await client.connect(timeout=10.0)
 
-                    def _on_notify(_sender, data: bytearray):
-                        for b in data:
-                            self._on_byte(b)
+                # Log connection details
+                mtu = client.mtu_size or "?"
+                svcs = [str(s.uuid) for s in client.services]
+                log(f"[ble] connected ({client.address}, MTU={mtu}, services={svcs})")
 
-                    await client.start_notify(NUS_TX_UUID, _on_notify)
+                self._client = client
 
-                    self._connected_evt.set()
-                    self._address = client.address  # cache for fast reconnect
-                    log(f"[ble] connected ({client.address})")
-                    # Fire the connect callback on a SEPARATE thread. Calling
-                    # it inline here deadlocks: the callback does sync writes
-                    # that marshal back onto this asyncio loop, but the loop
-                    # is blocked waiting for the callback to return.
-                    if self._on_connect:
-                        threading.Thread(
-                            target=self._on_connect,
-                            daemon=True,
-                            name="ble-handshake",
-                        ).start()
+                def _on_notify(_sender, data: bytearray):
+                    for b in data:
+                        self._on_byte(b)
 
-                    while client.is_connected:
-                        await asyncio.sleep(1.0)
-                    log("[ble] link lost")
+                await client.start_notify(NUS_TX_UUID, _on_notify)
+
+                self._connected_evt.set()
+                self._attempt = 0  # reset on successful connect
+                if self._on_connect:
+                    threading.Thread(
+                        target=self._on_connect,
+                        daemon=True,
+                        name="ble-handshake",
+                    ).start()
+
+                while client.is_connected:
+                    await asyncio.sleep(1.0)
+                log("[ble] link lost")
             except Exception as e:
-                log(f"[ble] client error: {e!r}")
+                log(f"[ble] connect/notify error: {e!r}")
             finally:
+                try:
+                    await client.disconnect()
+                except Exception:
+                    pass
                 self._client = None
                 self._connected_evt.clear()
 
@@ -1000,6 +1060,29 @@ def tz_offset_seconds() -> int:
     return int((local - utc_dt).total_seconds())
 
 
+def _find_known_ble_addr(name_prefix: str) -> str | None:
+    """Look up BlueZ's paired/known device list for a matching name.
+    Returns the address if found, so we can skip scanning."""
+    try:
+        import subprocess
+        out = subprocess.check_output(
+            ["bluetoothctl", "devices"],
+            timeout=5, text=True, stderr=subprocess.DEVNULL,
+        )
+        for line in out.strip().splitlines():
+            # Format: "Device AA:BB:CC:DD:EE:FF Device Name"
+            parts = line.split("Device ", 1)
+            if len(parts) < 2:
+                continue
+            rest = parts[1]
+            addr, _, name = rest.partition(" ")
+            if name.startswith(name_prefix):
+                return addr
+    except Exception:
+        pass
+    return None
+
+
 def pick_transport(kind: str, ble_name: str = "Paper Buddy", ble_addr: str = None) -> Transport:
     """Resolve --transport flag to a concrete Transport. 'auto' tries
     serial first (zero-setup, no BLE permission dance) and falls back
@@ -1028,6 +1111,88 @@ def pick_transport(kind: str, ble_name: str = "Paper Buddy", ble_addr: str = Non
     return BLETransport(name_prefix=ble_name, address=ble_addr)
 
 
+def ble_diag(name_prefix: str = "Paper Buddy"):
+    """Run a one-shot BLE diagnostic scan and exit."""
+    import subprocess
+
+    # bleak + BlueZ versions
+    try:
+        import importlib.metadata
+        log(f"[diag] bleak version: {importlib.metadata.version('bleak')}")
+    except ImportError:
+        log("[diag] bleak not installed")
+        return
+
+    try:
+        out = subprocess.run(["bluetoothctl", "--version"],
+                             capture_output=True, text=True, timeout=5)
+        log(f"[diag] BlueZ version: {out.stdout.strip()}")
+    except Exception:
+        log("[diag] BlueZ version: unknown")
+
+    # Adapter info
+    try:
+        out = subprocess.run(["hciconfig", "hci0"],
+                             capture_output=True, text=True, timeout=5)
+        for line in out.stdout.strip().splitlines():
+            if "BD Address" in line or "HCI Version" in line:
+                log(f"[diag] adapter: {line.strip()}")
+    except Exception:
+        pass
+
+    # Scan with bleak
+    import asyncio
+    from bleak import BleakScanner
+
+    async def _scan():
+        log("[diag] scanning 15s ...")
+        devs = await BleakScanner.discover(timeout=15.0, return_adv=True)
+        return devs
+
+    all_devs = asyncio.run(_scan())
+    target_found = False
+
+    log(f"[diag] found {len(all_devs)} device(s):")
+    for addr, (dev, adv) in sorted(all_devs.items(), key=lambda x: getattr(x[1][1], "rssi", -999), reverse=True):
+        name = dev.name or "(none)"
+        rssi = getattr(adv, "rssi", "?")
+        svcs = []
+        if hasattr(adv, "service_uuids") and adv.service_uuids:
+            svcs = [str(u)[:8] + "..." for u in adv.service_uuids]
+        is_target = name.startswith(name_prefix)
+        marker = " <-- MATCH" if is_target else ""
+        if is_target:
+            target_found = True
+        svc_str = f"  svc={svcs}" if svcs else ""
+        log(f"[diag]   {addr}  RSSI={rssi:>4}  {name:30s}{svc_str}{marker}")
+
+    if not target_found:
+        log(f"[diag] no device matching '{name_prefix}*' found in scan")
+
+    # bluetoothctl known devices
+    log("[diag] --- bluetoothctl known devices ---")
+    try:
+        out = subprocess.run(["bluetoothctl", "devices"],
+                             capture_output=True, text=True, timeout=5)
+        for line in out.stdout.strip().splitlines():
+            if name_prefix in line or "Paper" in line:
+                log(f"[diag]   {line.strip()}")
+                # Get details
+                parts = line.split("Device ", 1)
+                if len(parts) >= 2:
+                    addr = parts[1].split()[0]
+                    info = subprocess.run(
+                        ["bluetoothctl", "info", addr],
+                        capture_output=True, text=True, timeout=5,
+                    )
+                    for iline in info.stdout.strip().splitlines():
+                        il = iline.strip()
+                        if any(k in il for k in ["Name:", "Alias:", "Paired:", "Connected:", "UUID:"]):
+                            log(f"[diag]     {il}")
+    except Exception as e:
+        log(f"[diag] bluetoothctl error: {e}")
+
+
 def main():
     global BUDGET_LIMIT, TRANSPORT
 
@@ -1038,6 +1203,8 @@ def main():
                     help="BLE device name to scan for (default: Paper Buddy)")
     ap.add_argument("--ble-addr", default=None,
                     help="BLE device address for fast reconnect (e.g. 44:1B:F6:CC:44:2A)")
+    ap.add_argument("--ble-diag", action="store_true",
+                    help="run BLE diagnostic scan and exit")
     ap.add_argument("--http-port", type=int, default=9876)
     ap.add_argument("--owner", default=os.environ.get("USER", ""))
     ap.add_argument(
@@ -1049,6 +1216,10 @@ def main():
         "beta; set 0 to hide the bar)",
     )
     args = ap.parse_args()
+
+    if args.ble_diag:
+        ble_diag(args.ble_name)
+        return
 
     BUDGET_LIMIT = max(0, args.budget)
 

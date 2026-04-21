@@ -2,9 +2,12 @@
 #define _BLE_TRANSPORT_H_
 
 #include "transport.h"
+#include <functional>
 
 class BleTransport : public Transport {
 public:
+    using PasskeyCallback = std::function<void(uint32_t)>;
+
     BleTransport();
     ~BleTransport() override;
 
@@ -18,7 +21,11 @@ public:
     bool IsConnected() const;
     void SetConnected(bool v) { connected_ = v; }
     uint32_t GetPasskey() const;
+    void ClearPasskey();
     DataCallback& GetDataCallback() { return data_callback_; }
+
+    void OnPasskey(PasskeyCallback cb) { passkey_callback_ = cb; }
+    PasskeyCallback& GetPasskeyCallback() { return passkey_callback_; }
 
     // Called by C-linkage NimBLE callbacks
     void StartAdvertising();
@@ -28,6 +35,7 @@ private:
     bool initialized_ = false;
     bool connected_ = false;
     DataCallback data_callback_;
+    PasskeyCallback passkey_callback_;
 
     // NimBLE host callbacks
     static void OnSync();

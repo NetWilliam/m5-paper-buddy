@@ -250,23 +250,52 @@ void BuddyDisplay::CreateScreens() {
     lv_obj_set_style_text_color(approve_hints_label_, lv_color_black(), 0);
     lv_obj_align(approve_hints_label_, LV_ALIGN_BOTTOM_MID, 0, -4);
     lv_label_set_text(approve_hints_label_, "KEY=approve  BOOT=deny");
+
+    // ── Passkey screen ──
+    passkey_screen_ = lv_obj_create(default_screen);
+    lv_obj_set_size(passkey_screen_, RLCD_WIDTH, RLCD_HEIGHT);
+    lv_obj_set_pos(passkey_screen_, 0, 0);
+    lv_obj_add_style(passkey_screen_, &approve_style, 0);
+    lv_obj_remove_flag(passkey_screen_, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_flag(passkey_screen_, LV_OBJ_FLAG_HIDDEN);
+
+    auto* pk_title = lv_label_create(passkey_screen_);
+    lv_obj_set_style_text_font(pk_title, &lv_font_montserrat_20, 0);
+    lv_obj_set_style_text_color(pk_title, lv_color_black(), 0);
+    lv_obj_align(pk_title, LV_ALIGN_TOP_MID, 0, 40);
+    lv_label_set_text(pk_title, "PAIRING");
+
+    passkey_label_ = lv_label_create(passkey_screen_);
+    lv_obj_set_style_text_font(passkey_label_, &lv_font_montserrat_36, 0);
+    lv_obj_set_style_text_color(passkey_label_, lv_color_black(), 0);
+    lv_obj_align(passkey_label_, LV_ALIGN_CENTER, 0, 0);
+    lv_label_set_text(passkey_label_, "------");
+
+    auto* pk_hint = lv_label_create(passkey_screen_);
+    lv_obj_set_style_text_font(pk_hint, cjk_font_14_ ? cjk_font_14_ : &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_color(pk_hint, lv_color_black(), 0);
+    lv_obj_align(pk_hint, LV_ALIGN_BOTTOM_MID, 0, -30);
+    lv_label_set_text(pk_hint, "Enter passkey on your device");
 }
 
 void BuddyDisplay::ShowSplash(const char* deviceName) {
-    // Update splash name label
     lv_label_set_text(splash_name_label_, deviceName ? deviceName : "");
-
-    // Hide other screens, show splash
     lv_obj_add_flag(dash_screen_, LV_OBJ_FLAG_HIDDEN);
     lv_obj_add_flag(approve_screen_, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(passkey_screen_, LV_OBJ_FLAG_HIDDEN);
     lv_obj_clear_flag(splash_screen_, LV_OBJ_FLAG_HIDDEN);
     showing_approval_ = false;
+    showing_passkey_ = false;
 }
 
 void BuddyDisplay::ShowDashboard(const TamaState& state) {
     if (showing_approval_) {
         lv_obj_add_flag(approve_screen_, LV_OBJ_FLAG_HIDDEN);
         showing_approval_ = false;
+    }
+    if (showing_passkey_) {
+        lv_obj_add_flag(passkey_screen_, LV_OBJ_FLAG_HIDDEN);
+        showing_passkey_ = false;
     }
     lv_obj_add_flag(splash_screen_, LV_OBJ_FLAG_HIDDEN);
     lv_obj_clear_flag(dash_screen_, LV_OBJ_FLAG_HIDDEN);
@@ -277,10 +306,26 @@ void BuddyDisplay::ShowApproval(const TamaState& state, uint32_t waitedMs) {
     if (!showing_approval_) {
         lv_obj_add_flag(dash_screen_, LV_OBJ_FLAG_HIDDEN);
         lv_obj_add_flag(splash_screen_, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_add_flag(passkey_screen_, LV_OBJ_FLAG_HIDDEN);
         lv_obj_clear_flag(approve_screen_, LV_OBJ_FLAG_HIDDEN);
         showing_approval_ = true;
+        showing_passkey_ = false;
     }
     UpdateApprovalContent(state, waitedMs);
+}
+
+void BuddyDisplay::ShowPasskey(uint32_t passkey) {
+    char buf[8];
+    snprintf(buf, sizeof(buf), "%06" PRIu32, passkey);
+    lv_label_set_text(passkey_label_, buf);
+    if (!showing_passkey_) {
+        lv_obj_add_flag(dash_screen_, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_add_flag(splash_screen_, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_add_flag(approve_screen_, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_clear_flag(passkey_screen_, LV_OBJ_FLAG_HIDDEN);
+        showing_passkey_ = true;
+        showing_approval_ = false;
+    }
 }
 
 static const BuddyFrame& PickBuddyFrame(const TamaState& state) {
