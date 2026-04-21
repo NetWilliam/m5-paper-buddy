@@ -148,21 +148,24 @@ class BLETransport(Transport):
     """BLE Central via bleak.
 
     Runs an asyncio event loop on a dedicated thread. Scans for a device
-    advertising a name starting with "Claude-", connects, subscribes to
-    the Nordic UART TX characteristic for notifications, and exposes a
-    thread-safe write() that marshals back onto the asyncio loop.
+    advertising a name starting with the given prefix (default "Paper Buddy"),
+    connects, subscribes to the Nordic UART TX characteristic for
+    notifications, and exposes a thread-safe write() that marshals back onto
+    the asyncio loop.
 
     Reconnects automatically on disconnect or scan failure.
     """
 
-    def __init__(self, name_prefix="Claude-"):
+    def __init__(self, name_prefix="Paper Buddy", address=None):
         self._name_prefix = name_prefix
+        self._address = address          # known device address for fast reconnect
         self._loop = None
         self._client = None
         self._thread = None
         self._on_byte = None
         self._on_connect = None
         self._connected_evt = threading.Event()
+        self._write_lock = threading.Lock()
 
     def start(self, on_byte, on_connect=None):
         self._on_byte = on_byte
@@ -186,22 +189,30 @@ class BLETransport(Transport):
             return
 
         while True:
-            log(f"[ble] scanning for '{self._name_prefix}*'...")
             device = None
-            try:
-                device = await BleakScanner.find_device_by_filter(
-                    lambda d, ad: bool(d.name) and d.name.startswith(self._name_prefix),
-                    timeout=10.0,
-                )
-            except Exception as e:
-                log(f"[ble] scan error: {e}")
+
+            # Fast path: connect directly to known address (no scan needed)
+            if self._address:
+                log(f"[ble] connecting to {self._address} (cached)")
+                device = self._address   # BleakClient accepts a bare address string
+
+            # Slow path: full BLE scan
+            if not device:
+                log(f"[ble] scanning for '{self._name_prefix}*'...")
+                try:
+                    device = await BleakScanner.find_device_by_filter(
+                        lambda d, ad: bool(d.name) and d.name.startswith(self._name_prefix),
+                        timeout=10.0,
+                    )
+                except Exception as e:
+                    log(f"[ble] scan error: {e}")
 
             if not device:
                 log("[ble] no device found, retrying in 5s")
                 await asyncio.sleep(5)
                 continue
 
-            log(f"[ble] connecting to {device.name} ({device.address})")
+            log(f"[ble] connecting to {device}")
             try:
                 # Bleak's context manager handles disconnect on exit. We stay
                 # inside it as long as the link is alive.
@@ -215,7 +226,8 @@ class BLETransport(Transport):
                     await client.start_notify(NUS_TX_UUID, _on_notify)
 
                     self._connected_evt.set()
-                    log("[ble] connected")
+                    self._address = client.address  # cache for fast reconnect
+                    log(f"[ble] connected ({client.address})")
                     # Fire the connect callback on a SEPARATE thread. Calling
                     # it inline here deadlocks: the callback does sync writes
                     # that marshal back onto this asyncio loop, but the loop
@@ -242,14 +254,24 @@ class BLETransport(Transport):
         client = self._client
         if client is None or not client.is_connected:
             return
-        try:
-            fut = asyncio.run_coroutine_threadsafe(
-                client.write_gatt_char(NUS_RX_UUID, data, response=False),
-                self._loop,
-            )
-            fut.result(timeout=3)
-        except Exception as e:
-            log(f"[ble] write fail: {e!r}")
+        with self._write_lock:
+            # BLE GATT writes are limited to (MTU - 3) bytes per operation.
+            # Chunk the payload and send each piece sequentially.
+            chunk_size = max(20, (client.mtu_size or 23) - 3)
+            offset = 0
+            while offset < len(data):
+                end = min(offset + chunk_size, len(data))
+                chunk = data[offset:end]
+                try:
+                    fut = asyncio.run_coroutine_threadsafe(
+                        client.write_gatt_char(NUS_RX_UUID, chunk, response=False),
+                        self._loop,
+                    )
+                    fut.result(timeout=3)
+                except Exception as e:
+                    log(f"[ble] write fail ({len(data)}B chunk@{offset}): {e!r}")
+                    return
+                offset = end
 
     def connected(self):
         return self._connected_evt.is_set()
@@ -978,7 +1000,7 @@ def tz_offset_seconds() -> int:
     return int((local - utc_dt).total_seconds())
 
 
-def pick_transport(kind: str) -> Transport:
+def pick_transport(kind: str, ble_name: str = "Paper Buddy", ble_addr: str = None) -> Transport:
     """Resolve --transport flag to a concrete Transport. 'auto' tries
     serial first (zero-setup, no BLE permission dance) and falls back
     to BLE if no USB device is found."""
@@ -996,14 +1018,14 @@ def pick_transport(kind: str) -> Transport:
         return SerialTransport(candidates[0])
 
     if kind == "ble":
-        return BLETransport()
+        return BLETransport(name_prefix=ble_name, address=ble_addr)
 
     # auto
     if candidates:
         log("[transport] serial device found, using USB")
         return SerialTransport(candidates[0])
     log("[transport] no serial device, falling back to BLE")
-    return BLETransport()
+    return BLETransport(name_prefix=ble_name, address=ble_addr)
 
 
 def main():
@@ -1012,6 +1034,10 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--port", help="explicit serial port (implies --transport serial)")
     ap.add_argument("--transport", choices=("auto", "serial", "ble"), default="auto")
+    ap.add_argument("--ble-name", default="Paper Buddy",
+                    help="BLE device name to scan for (default: Paper Buddy)")
+    ap.add_argument("--ble-addr", default=None,
+                    help="BLE device address for fast reconnect (e.g. 44:1B:F6:CC:44:2A)")
     ap.add_argument("--http-port", type=int, default=9876)
     ap.add_argument("--owner", default=os.environ.get("USER", ""))
     ap.add_argument(
@@ -1029,7 +1055,7 @@ def main():
     if args.port:
         TRANSPORT = SerialTransport(args.port)
     else:
-        TRANSPORT = pick_transport(args.transport)
+        TRANSPORT = pick_transport(args.transport, args.ble_name, args.ble_addr)
 
     # Send the owner + time-sync handshake whenever we (re)connect. For
     # serial, the transport fires on_connect immediately. For BLE, it
