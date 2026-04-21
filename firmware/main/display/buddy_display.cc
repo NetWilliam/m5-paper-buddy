@@ -44,6 +44,7 @@ void BuddyDisplay::CreateScreens() {
     lv_style_set_text_color(&screen_style, lv_color_white());
     lv_style_set_border_width(&screen_style, 0);
     lv_style_set_pad_all(&screen_style, 0);
+    lv_style_set_text_line_space(&screen_style, 0);
 
     // ── Splash screen ──
     splash_screen_ = lv_obj_create(default_screen);
@@ -83,33 +84,33 @@ void BuddyDisplay::CreateScreens() {
     dash_title_ = lv_label_create(dash_screen_);
     lv_obj_set_style_text_font(dash_title_, font16, 0);
     lv_obj_set_style_text_color(dash_title_, lv_color_white(), 0);
-    lv_obj_align(dash_title_, LV_ALIGN_TOP_LEFT, 4, 4);
+    lv_obj_align(dash_title_, LV_ALIGN_TOP_LEFT, 4, 2);
     lv_label_set_text(dash_title_, "Paper Buddy");
 
     // Model (top-right)
     dash_model_ = lv_label_create(dash_screen_);
     lv_obj_set_style_text_font(dash_model_, font14, 0);
     lv_obj_set_style_text_color(dash_model_, lv_color_white(), 0);
-    lv_obj_align(dash_model_, LV_ALIGN_TOP_RIGHT, -4, 4);
+    lv_obj_align(dash_model_, LV_ALIGN_TOP_RIGHT, -4, 2);
     lv_label_set_text(dash_model_, "");
 
     // Project + sessions line
     dash_project_ = lv_label_create(dash_screen_);
     lv_obj_set_style_text_font(dash_project_, font14, 0);
     lv_obj_set_style_text_color(dash_project_, lv_color_white(), 0);
-    lv_obj_set_pos(dash_project_, 4, 24);
+    lv_obj_set_pos(dash_project_, 4, 18);
     lv_label_set_text(dash_project_, "");
 
     dash_sessions_ = lv_label_create(dash_screen_);
     lv_obj_set_style_text_font(dash_sessions_, font14, 0);
     lv_obj_set_style_text_color(dash_sessions_, lv_color_white(), 0);
-    lv_obj_align(dash_sessions_, LV_ALIGN_TOP_RIGHT, -4, 24);
+    lv_obj_align(dash_sessions_, LV_ALIGN_TOP_RIGHT, -4, 18);
     lv_label_set_text(dash_sessions_, "");
 
     // Separator line
     lv_obj_t* sep1 = lv_obj_create(dash_screen_);
     lv_obj_set_size(sep1, RLCD_WIDTH - 8, 1);
-    lv_obj_set_pos(sep1, 4, 44);
+    lv_obj_set_pos(sep1, 4, 36);
     lv_obj_set_style_bg_color(sep1, lv_color_white(), 0);
     lv_obj_set_style_bg_opa(sep1, LV_OPA_COVER, 0);
     lv_obj_set_style_border_width(sep1, 0, 0);
@@ -119,13 +120,13 @@ void BuddyDisplay::CreateScreens() {
     lv_obj_t* reply_title = lv_label_create(dash_screen_);
     lv_obj_set_style_text_font(reply_title, font14, 0);
     lv_obj_set_style_text_color(reply_title, lv_color_white(), 0);
-    lv_obj_set_pos(reply_title, 4, 48);
+    lv_obj_set_pos(reply_title, 4, 38);
     lv_label_set_text(reply_title, "LATEST REPLY");
 
     dash_reply_label_ = lv_label_create(dash_screen_);
     lv_obj_set_style_text_font(dash_reply_label_, font14, 0);
     lv_obj_set_style_text_color(dash_reply_label_, lv_color_white(), 0);
-    lv_obj_set_pos(dash_reply_label_, 4, 64);
+    lv_obj_set_pos(dash_reply_label_, 4, 52);
     lv_label_set_long_mode(dash_reply_label_, LV_LABEL_LONG_WRAP);
     lv_obj_set_width(dash_reply_label_, RLCD_WIDTH - 8);
     lv_label_set_text(dash_reply_label_, "");
@@ -133,7 +134,7 @@ void BuddyDisplay::CreateScreens() {
     // Activity section
     lv_obj_t* sep2 = lv_obj_create(dash_screen_);
     lv_obj_set_size(sep2, RLCD_WIDTH - 8, 1);
-    lv_obj_set_pos(sep2, 4, 140);
+    lv_obj_set_pos(sep2, 4, 130);
     lv_obj_set_style_bg_color(sep2, lv_color_white(), 0);
     lv_obj_set_style_bg_opa(sep2, LV_OPA_COVER, 0);
     lv_obj_set_style_border_width(sep2, 0, 0);
@@ -142,21 +143,25 @@ void BuddyDisplay::CreateScreens() {
     lv_obj_t* act_title = lv_label_create(dash_screen_);
     lv_obj_set_style_text_font(act_title, font14, 0);
     lv_obj_set_style_text_color(act_title, lv_color_white(), 0);
-    lv_obj_set_pos(act_title, 4, 144);
+    lv_obj_set_pos(act_title, 4, 132);
     lv_label_set_text(act_title, "ACTIVITY");
 
     dash_activity_label_ = lv_label_create(dash_screen_);
     lv_obj_set_style_text_font(dash_activity_label_, font14, 0);
     lv_obj_set_style_text_color(dash_activity_label_, lv_color_white(), 0);
-    lv_obj_set_pos(dash_activity_label_, 4, 160);
+    static lv_style_t tight_style;
+    lv_style_init(&tight_style);
+    lv_style_set_text_line_space(&tight_style, -2);
+    lv_obj_add_style(dash_activity_label_, &tight_style, 0);
+    lv_obj_set_pos(dash_activity_label_, 4, 146);
     lv_label_set_long_mode(dash_activity_label_, LV_LABEL_LONG_WRAP);
-    lv_obj_set_width(dash_activity_label_, RLCD_WIDTH - 8);
+    lv_obj_set_size(dash_activity_label_, RLCD_WIDTH - 8, 126);
     lv_label_set_text(dash_activity_label_, "");
 
-    // Footer: buddy + status
+    // Footer: face (left) + status (right)
     lv_obj_t* sep3 = lv_obj_create(dash_screen_);
     lv_obj_set_size(sep3, RLCD_WIDTH - 8, 1);
-    lv_obj_set_pos(sep3, 4, RLCD_HEIGHT - 44);
+    lv_obj_set_pos(sep3, 4, RLCD_HEIGHT - 28);
     lv_obj_set_style_bg_color(sep3, lv_color_white(), 0);
     lv_obj_set_style_bg_opa(sep3, LV_OPA_COVER, 0);
     lv_obj_set_style_border_width(sep3, 0, 0);
@@ -165,14 +170,14 @@ void BuddyDisplay::CreateScreens() {
     dash_buddy_label_ = lv_label_create(dash_screen_);
     lv_obj_set_style_text_font(dash_buddy_label_, font14, 0);
     lv_obj_set_style_text_color(dash_buddy_label_, lv_color_white(), 0);
-    lv_obj_set_pos(dash_buddy_label_, 4, RLCD_HEIGHT - 40);
+    lv_obj_set_pos(dash_buddy_label_, 4, RLCD_HEIGHT - 24);
     lv_label_set_text(dash_buddy_label_, "");
 
     dash_status_label_ = lv_label_create(dash_screen_);
     lv_obj_set_style_text_font(dash_status_label_, font14, 0);
     lv_obj_set_style_text_color(dash_status_label_, lv_color_white(), 0);
-    lv_obj_align(dash_status_label_, LV_ALIGN_TOP_RIGHT, -4, RLCD_HEIGHT - 40);
-    lv_label_set_text(dash_status_label_, "KEY=yes BOOT=no");
+    lv_obj_align(dash_status_label_, LV_ALIGN_TOP_RIGHT, -4, RLCD_HEIGHT - 24);
+    lv_label_set_text(dash_status_label_, "");
 
     // ── Approval screen (inverted: white bg, black text) ──
     static lv_style_t approve_style;
@@ -182,6 +187,7 @@ void BuddyDisplay::CreateScreens() {
     lv_style_set_text_color(&approve_style, lv_color_black());
     lv_style_set_border_width(&approve_style, 0);
     lv_style_set_pad_all(&approve_style, 0);
+    lv_style_set_text_line_space(&approve_style, 0);
 
     approve_screen_ = lv_obj_create(default_screen);
     lv_obj_set_size(approve_screen_, RLCD_WIDTH, RLCD_HEIGHT);
@@ -234,6 +240,7 @@ void BuddyDisplay::CreateScreens() {
     approve_body_label_ = lv_label_create(body_container);
     lv_obj_set_style_text_font(approve_body_label_, font14, 0);
     lv_obj_set_style_text_color(approve_body_label_, lv_color_black(), 0);
+    lv_obj_add_style(approve_body_label_, &tight_style, 0);
     lv_label_set_long_mode(approve_body_label_, LV_LABEL_LONG_WRAP);
     lv_obj_set_width(approve_body_label_, RLCD_WIDTH - 16);
     lv_label_set_text(approve_body_label_, "");
@@ -389,16 +396,9 @@ void BuddyDisplay::UpdateDashboardContent(const TamaState& state) {
         lv_label_set_text(dash_activity_label_, "-");
     }
 
-    // Buddy face
+    // Footer: face (left) + status (right)
     const BuddyFrame& f = PickBuddyFrame(state);
-    char buddy[80];
-    int off = 0;
-    for (int i = 0; i < 5; i++) {
-        off += snprintf(buddy + off, sizeof(buddy) - off, "%s\n", f.lines[i]);
-    }
-    lv_label_set_text(dash_buddy_label_, buddy);
-
-    // Status bar
+    lv_label_set_text(dash_buddy_label_, f.face);
     const char* linkStr = state.connected ? "LINKED" : "USB/BLE";
     lv_label_set_text(dash_status_label_, linkStr);
 }
