@@ -1,16 +1,18 @@
 idf_component_register(
     SRCS
         "main.cc"
-        "display/lcd_driver.cc"
-        "display/buddy_display.cc"
-        "button/button_handler.cc"
-        "transport/serial_jtag_transport.cc"
-        "transport/ble_transport.cc"
-        "protocol/line_protocol.cc"
-        "state/state_parser.cc"
-        "state/stats.cc"
-        "display/spiffs_image.cc"
-        "display/lv_font_cjk_ext_14.c"
+        "app/buddy_app.cc"
+        "hal/lcd_driver.cc"
+        "hal/spiffs_image.cc"
+        "hal/button_handler.cc"
+        "net/serial_jtag_transport.cc"
+        "net/ble_transport.cc"
+        "net/line_protocol.cc"
+        "model/state_parser.cc"
+        "model/stats.cc"
+        "model/xfer_commands.cc"
+        "ui/buddy_display.cc"
+        "ui/lv_font_cjk_ext_14.c"
     INCLUDE_DIRS "."
     REQUIRES
         driver

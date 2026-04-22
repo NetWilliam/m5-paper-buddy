@@ -1,19 +1,14 @@
-#ifndef _XFER_COMMANDS_H_
-#define _XFER_COMMANDS_H_
-
-#include "cJSON.h"
+#include "xfer_commands.h"
 #include "stats.h"
 #include <cstdio>
 #include <cstring>
-#include <esp_log.h>
 
-// Forward-declared: implemented by the transport layer to send a line.
-// Must be set during initialization.
-using SendLineFn = void(*)(const char* line, size_t len);
-extern SendLineFn g_send_line;
+void XferCommands::Init(SendLine send) {
+    send_ = send;
+}
 
-inline bool TryXferCommand(cJSON* root) {
-    if (!g_send_line) return false;
+bool XferCommands::TryHandle(cJSON* root) {
+    if (!send_) return false;
 
     cJSON* cmd = cJSON_GetObjectItemCaseSensitive(root, "cmd");
     if (!cmd || !cJSON_IsString(cmd)) return false;
@@ -26,7 +21,7 @@ inline bool TryXferCommand(cJSON* root) {
         char ack[64];
         int len = snprintf(ack, sizeof(ack),
             "{\"ack\":\"name\",\"ok\":%s}\n", (n ? "true" : "false"));
-        g_send_line(ack, len);
+        send_(ack, len);
         return true;
     }
 
@@ -36,7 +31,7 @@ inline bool TryXferCommand(cJSON* root) {
         char ack[64];
         int len = snprintf(ack, sizeof(ack),
             "{\"ack\":\"owner\",\"ok\":%s}\n", (n ? "true" : "false"));
-        g_send_line(ack, len);
+        send_(ack, len);
         return true;
     }
 
@@ -50,11 +45,9 @@ inline bool TryXferCommand(cJSON* root) {
             petName(), ownerName(),
             (unsigned)stats().approvals, (unsigned)stats().denials,
             (unsigned)stats().level);
-        g_send_line(ack, len);
+        send_(ack, len);
         return true;
     }
 
     return false;
 }
-
-#endif // _XFER_COMMANDS_H_

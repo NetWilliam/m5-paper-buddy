@@ -2,7 +2,7 @@
 #define _BUDDY_DISPLAY_H_
 
 #include "lvgl.h"
-#include "state/tama_state.h"
+#include "model/tama_state.h"
 #include <cstdint>
 
 /// LVGL-based display for the 400x300 RLCD.

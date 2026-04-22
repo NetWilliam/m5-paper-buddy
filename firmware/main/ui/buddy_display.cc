@@ -1,7 +1,7 @@
 #include "buddy_display.h"
 #include "config.h"
 #include "buddy_frames.h"
-#include "state/stats.h"
+#include "layout.h"
 #include <esp_log.h>
 #include <esp_heap_caps.h>
 #include <cstdio>
@@ -57,19 +57,19 @@ void BuddyDisplay::CreateScreens() {
     lv_obj_t* splash_title = lv_label_create(splash_screen_);
     lv_obj_set_style_text_font(splash_title, &lv_font_montserrat_36, 0);
     lv_obj_set_style_text_color(splash_title, lv_color_white(), 0);
-    lv_obj_align(splash_title, LV_ALIGN_CENTER, 0, -40);
+    lv_obj_align(splash_title, LV_ALIGN_CENTER, 0, layout::SPLASH_TITLE_OFFSET);
     lv_label_set_text(splash_title, "Paper Buddy");
 
     lv_obj_t* splash_sub = lv_label_create(splash_screen_);
     lv_obj_set_style_text_font(splash_sub, font14, 0);
     lv_obj_set_style_text_color(splash_sub, lv_color_white(), 0);
-    lv_obj_align(splash_sub, LV_ALIGN_CENTER, 0, 20);
+    lv_obj_align(splash_sub, LV_ALIGN_CENTER, 0, layout::SPLASH_SUB_OFFSET);
     lv_label_set_text(splash_sub, "ESP32-S3-RLCD-4.2");
 
     splash_name_label_ = lv_label_create(splash_screen_);
     lv_obj_set_style_text_font(splash_name_label_, font14, 0);
     lv_obj_set_style_text_color(splash_name_label_, lv_color_white(), 0);
-    lv_obj_align(splash_name_label_, LV_ALIGN_CENTER, 0, 40);
+    lv_obj_align(splash_name_label_, LV_ALIGN_CENTER, 0, layout::SPLASH_NAME_OFFSET);
     lv_label_set_text(splash_name_label_, "");
 
     // ── Dashboard screen ──
@@ -84,33 +84,33 @@ void BuddyDisplay::CreateScreens() {
     dash_title_ = lv_label_create(dash_screen_);
     lv_obj_set_style_text_font(dash_title_, font16, 0);
     lv_obj_set_style_text_color(dash_title_, lv_color_white(), 0);
-    lv_obj_align(dash_title_, LV_ALIGN_TOP_LEFT, 4, 2);
+    lv_obj_align(dash_title_, LV_ALIGN_TOP_LEFT, layout::MARGIN, layout::TITLE_Y);
     lv_label_set_text(dash_title_, "Paper Buddy");
 
     // Model (top-right)
     dash_model_ = lv_label_create(dash_screen_);
     lv_obj_set_style_text_font(dash_model_, font14, 0);
     lv_obj_set_style_text_color(dash_model_, lv_color_white(), 0);
-    lv_obj_align(dash_model_, LV_ALIGN_TOP_RIGHT, -4, 2);
+    lv_obj_align(dash_model_, LV_ALIGN_TOP_RIGHT, -layout::MARGIN, layout::MODEL_Y);
     lv_label_set_text(dash_model_, "");
 
     // Project + sessions line
     dash_project_ = lv_label_create(dash_screen_);
     lv_obj_set_style_text_font(dash_project_, font14, 0);
     lv_obj_set_style_text_color(dash_project_, lv_color_white(), 0);
-    lv_obj_set_pos(dash_project_, 4, 18);
+    lv_obj_set_pos(dash_project_, layout::MARGIN, layout::PROJECT_Y);
     lv_label_set_text(dash_project_, "");
 
     dash_sessions_ = lv_label_create(dash_screen_);
     lv_obj_set_style_text_font(dash_sessions_, font14, 0);
     lv_obj_set_style_text_color(dash_sessions_, lv_color_white(), 0);
-    lv_obj_align(dash_sessions_, LV_ALIGN_TOP_RIGHT, -4, 18);
+    lv_obj_align(dash_sessions_, LV_ALIGN_TOP_RIGHT, -layout::MARGIN, layout::SESSIONS_Y);
     lv_label_set_text(dash_sessions_, "");
 
     // Separator line
     lv_obj_t* sep1 = lv_obj_create(dash_screen_);
-    lv_obj_set_size(sep1, DISP_WIDTH - 8, 1);
-    lv_obj_set_pos(sep1, 4, 36);
+    lv_obj_set_size(sep1, layout::CONTENT_W, layout::SEP_HEIGHT);
+    lv_obj_set_pos(sep1, layout::MARGIN, layout::SEP1_Y);
     lv_obj_set_style_bg_color(sep1, lv_color_white(), 0);
     lv_obj_set_style_bg_opa(sep1, LV_OPA_COVER, 0);
     lv_obj_set_style_border_width(sep1, 0, 0);
@@ -120,21 +120,21 @@ void BuddyDisplay::CreateScreens() {
     lv_obj_t* reply_title = lv_label_create(dash_screen_);
     lv_obj_set_style_text_font(reply_title, font14, 0);
     lv_obj_set_style_text_color(reply_title, lv_color_white(), 0);
-    lv_obj_set_pos(reply_title, 4, 38);
+    lv_obj_set_pos(reply_title, layout::MARGIN, layout::REPLY_TITLE_Y);
     lv_label_set_text(reply_title, "LATEST REPLY");
 
     dash_reply_label_ = lv_label_create(dash_screen_);
     lv_obj_set_style_text_font(dash_reply_label_, font14, 0);
     lv_obj_set_style_text_color(dash_reply_label_, lv_color_white(), 0);
-    lv_obj_set_pos(dash_reply_label_, 4, 52);
+    lv_obj_set_pos(dash_reply_label_, layout::MARGIN, layout::REPLY_Y);
     lv_label_set_long_mode(dash_reply_label_, LV_LABEL_LONG_WRAP);
-    lv_obj_set_width(dash_reply_label_, DISP_WIDTH - 8);
+    lv_obj_set_width(dash_reply_label_, layout::CONTENT_W);
     lv_label_set_text(dash_reply_label_, "");
 
     // Activity section
     lv_obj_t* sep2 = lv_obj_create(dash_screen_);
-    lv_obj_set_size(sep2, DISP_WIDTH - 8, 1);
-    lv_obj_set_pos(sep2, 4, 170);
+    lv_obj_set_size(sep2, layout::CONTENT_W, layout::SEP_HEIGHT);
+    lv_obj_set_pos(sep2, layout::MARGIN, layout::SEP2_Y);
     lv_obj_set_style_bg_color(sep2, lv_color_white(), 0);
     lv_obj_set_style_bg_opa(sep2, LV_OPA_COVER, 0);
     lv_obj_set_style_border_width(sep2, 0, 0);
@@ -143,7 +143,7 @@ void BuddyDisplay::CreateScreens() {
     lv_obj_t* act_title = lv_label_create(dash_screen_);
     lv_obj_set_style_text_font(act_title, font14, 0);
     lv_obj_set_style_text_color(act_title, lv_color_white(), 0);
-    lv_obj_set_pos(act_title, 4, 172);
+    lv_obj_set_pos(act_title, layout::MARGIN, layout::ACT_TITLE_Y);
     lv_label_set_text(act_title, "ACTIVITY");
 
     dash_activity_label_ = lv_label_create(dash_screen_);
@@ -153,15 +153,15 @@ void BuddyDisplay::CreateScreens() {
     lv_style_init(&tight_style);
     lv_style_set_text_line_space(&tight_style, -2);
     lv_obj_add_style(dash_activity_label_, &tight_style, 0);
-    lv_obj_set_pos(dash_activity_label_, 4, 186);
+    lv_obj_set_pos(dash_activity_label_, layout::MARGIN, layout::ACTIVITY_Y);
     lv_label_set_long_mode(dash_activity_label_, LV_LABEL_LONG_WRAP);
-    lv_obj_set_size(dash_activity_label_, DISP_WIDTH - 8, 186);
+    lv_obj_set_size(dash_activity_label_, layout::CONTENT_W, layout::ACTIVITY_H);
     lv_label_set_text(dash_activity_label_, "");
 
     // Footer: face (left) + status (right)
     lv_obj_t* sep3 = lv_obj_create(dash_screen_);
-    lv_obj_set_size(sep3, DISP_WIDTH - 8, 1);
-    lv_obj_set_pos(sep3, 4, DISP_HEIGHT - 28);
+    lv_obj_set_size(sep3, layout::CONTENT_W, layout::SEP_HEIGHT);
+    lv_obj_set_pos(sep3, layout::MARGIN, layout::FOOTER_SEP_Y);
     lv_obj_set_style_bg_color(sep3, lv_color_white(), 0);
     lv_obj_set_style_bg_opa(sep3, LV_OPA_COVER, 0);
     lv_obj_set_style_border_width(sep3, 0, 0);
@@ -170,13 +170,13 @@ void BuddyDisplay::CreateScreens() {
     dash_buddy_label_ = lv_label_create(dash_screen_);
     lv_obj_set_style_text_font(dash_buddy_label_, font14, 0);
     lv_obj_set_style_text_color(dash_buddy_label_, lv_color_white(), 0);
-    lv_obj_set_pos(dash_buddy_label_, 4, DISP_HEIGHT - 24);
+    lv_obj_set_pos(dash_buddy_label_, layout::MARGIN, layout::FOOTER_Y);
     lv_label_set_text(dash_buddy_label_, "");
 
     dash_status_label_ = lv_label_create(dash_screen_);
     lv_obj_set_style_text_font(dash_status_label_, font14, 0);
     lv_obj_set_style_text_color(dash_status_label_, lv_color_white(), 0);
-    lv_obj_align(dash_status_label_, LV_ALIGN_TOP_RIGHT, -4, DISP_HEIGHT - 24);
+    lv_obj_align(dash_status_label_, LV_ALIGN_TOP_RIGHT, -layout::MARGIN, layout::FOOTER_Y);
     lv_label_set_text(dash_status_label_, "");
 
     // ── Approval screen (inverted: white bg, black text) ──
@@ -200,27 +200,27 @@ void BuddyDisplay::CreateScreens() {
     lv_obj_t* approve_header = lv_label_create(approve_screen_);
     lv_obj_set_style_text_font(approve_header, font14, 0);
     lv_obj_set_style_text_color(approve_header, lv_color_black(), 0);
-    lv_obj_align(approve_header, LV_ALIGN_TOP_MID, 0, 4);
+    lv_obj_align(approve_header, LV_ALIGN_TOP_MID, 0, layout::APPROVE_HEADER_Y);
     lv_label_set_text(approve_header, "PERMISSION REQUESTED");
 
     // Tool name
     approve_tool_label_ = lv_label_create(approve_screen_);
     lv_obj_set_style_text_font(approve_tool_label_, &lv_font_montserrat_20, 0);
     lv_obj_set_style_text_color(approve_tool_label_, lv_color_black(), 0);
-    lv_obj_align(approve_tool_label_, LV_ALIGN_TOP_MID, 0, 22);
+    lv_obj_align(approve_tool_label_, LV_ALIGN_TOP_MID, 0, layout::APPROVE_TOOL_Y);
     lv_label_set_text(approve_tool_label_, "");
 
     // Project/session origin
     approve_project_label_ = lv_label_create(approve_screen_);
     lv_obj_set_style_text_font(approve_project_label_, font14, 0);
     lv_obj_set_style_text_color(approve_project_label_, lv_color_black(), 0);
-    lv_obj_align(approve_project_label_, LV_ALIGN_TOP_MID, 0, 46);
+    lv_obj_align(approve_project_label_, LV_ALIGN_TOP_MID, 0, layout::APPROVE_PROJECT_Y);
     lv_label_set_text(approve_project_label_, "");
 
     // Separator
     lv_obj_t* approve_sep = lv_obj_create(approve_screen_);
-    lv_obj_set_size(approve_sep, DISP_WIDTH - 8, 1);
-    lv_obj_set_pos(approve_sep, 4, 64);
+    lv_obj_set_size(approve_sep, layout::CONTENT_W, layout::SEP_HEIGHT);
+    lv_obj_set_pos(approve_sep, layout::MARGIN, layout::APPROVE_SEP_Y);
     lv_obj_set_style_bg_color(approve_sep, lv_color_black(), 0);
     lv_obj_set_style_bg_opa(approve_sep, LV_OPA_COVER, 0);
     lv_obj_set_style_border_width(approve_sep, 0, 0);
@@ -228,12 +228,12 @@ void BuddyDisplay::CreateScreens() {
 
     // Body (scrollable)
     lv_obj_t* body_container = lv_obj_create(approve_screen_);
-    lv_obj_set_size(body_container, DISP_WIDTH - 8, 280);
-    lv_obj_set_pos(body_container, 4, 68);
+    lv_obj_set_size(body_container, layout::CONTENT_W, layout::APPROVE_BODY_H);
+    lv_obj_set_pos(body_container, layout::MARGIN, layout::APPROVE_BODY_Y);
     lv_obj_set_style_bg_color(body_container, lv_color_white(), 0);
     lv_obj_set_style_bg_opa(body_container, LV_OPA_COVER, 0);
     lv_obj_set_style_border_width(body_container, 0, 0);
-    lv_obj_set_style_pad_all(body_container, 2, 0);
+    lv_obj_set_style_pad_all(body_container, layout::APPROVE_BODY_PAD, 0);
     lv_obj_set_scroll_dir(body_container, LV_DIR_VER);
     lv_obj_set_scrollbar_mode(body_container, LV_SCROLLBAR_MODE_AUTO);
 
@@ -242,20 +242,20 @@ void BuddyDisplay::CreateScreens() {
     lv_obj_set_style_text_color(approve_body_label_, lv_color_black(), 0);
     lv_obj_add_style(approve_body_label_, &tight_style, 0);
     lv_label_set_long_mode(approve_body_label_, LV_LABEL_LONG_WRAP);
-    lv_obj_set_width(approve_body_label_, DISP_WIDTH - 16);
+    lv_obj_set_width(approve_body_label_, layout::APPROVE_BODY_W);
     lv_label_set_text(approve_body_label_, "");
 
     // Bottom section: wait counter + button hints
     approve_wait_label_ = lv_label_create(approve_screen_);
     lv_obj_set_style_text_font(approve_wait_label_, font14, 0);
     lv_obj_set_style_text_color(approve_wait_label_, lv_color_black(), 0);
-    lv_obj_set_pos(approve_wait_label_, 4, 354);
+    lv_obj_set_pos(approve_wait_label_, layout::MARGIN, layout::APPROVE_WAIT_Y);
     lv_label_set_text(approve_wait_label_, "");
 
     approve_hints_label_ = lv_label_create(approve_screen_);
     lv_obj_set_style_text_font(approve_hints_label_, &lv_font_montserrat_20, 0);
     lv_obj_set_style_text_color(approve_hints_label_, lv_color_black(), 0);
-    lv_obj_align(approve_hints_label_, LV_ALIGN_BOTTOM_MID, 0, -4);
+    lv_obj_align(approve_hints_label_, LV_ALIGN_BOTTOM_MID, 0, -layout::APPROVE_HINTS_PAD);
     lv_label_set_text(approve_hints_label_, "BOOT=approve  KEY=deny");
 
     // ── Passkey screen ──
@@ -269,7 +269,7 @@ void BuddyDisplay::CreateScreens() {
     auto* pk_title = lv_label_create(passkey_screen_);
     lv_obj_set_style_text_font(pk_title, &lv_font_montserrat_20, 0);
     lv_obj_set_style_text_color(pk_title, lv_color_black(), 0);
-    lv_obj_align(pk_title, LV_ALIGN_TOP_MID, 0, 40);
+    lv_obj_align(pk_title, LV_ALIGN_TOP_MID, 0, layout::PASSKEY_TITLE_Y);
     lv_label_set_text(pk_title, "PAIRING");
 
     passkey_label_ = lv_label_create(passkey_screen_);
@@ -281,7 +281,7 @@ void BuddyDisplay::CreateScreens() {
     auto* pk_hint = lv_label_create(passkey_screen_);
     lv_obj_set_style_text_font(pk_hint, cjk_font_14_ ? cjk_font_14_ : &lv_font_montserrat_14, 0);
     lv_obj_set_style_text_color(pk_hint, lv_color_black(), 0);
-    lv_obj_align(pk_hint, LV_ALIGN_BOTTOM_MID, 0, -30);
+    lv_obj_align(pk_hint, LV_ALIGN_BOTTOM_MID, 0, -layout::PASSKEY_HINT_PAD);
     lv_label_set_text(pk_hint, "Enter passkey on your device");
 }
 
@@ -346,8 +346,8 @@ static const BuddyFrame& PickBuddyFrame(const TamaState& state) {
 void BuddyDisplay::UpdateDashboardContent(const TamaState& state) {
     // Title
     char title[64];
-    if (ownerName()[0]) snprintf(title, sizeof(title), "%s's %s", ownerName(), petName());
-    else                 snprintf(title, sizeof(title), "Paper Buddy");
+    if (state.ownerName[0]) snprintf(title, sizeof(title), "%s's %s", state.ownerName, state.petName);
+    else                     snprintf(title, sizeof(title), "Paper Buddy");
     lv_label_set_text(dash_title_, title);
 
     // Model

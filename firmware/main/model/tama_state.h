@@ -32,6 +32,9 @@ struct TamaState {
     char     assistantMsg[240] = {};
     uint16_t assistantGen = 0;
 
+    char     ownerName[24] = {};
+    char     petName[24] = {};
+
     void ClearPrompt() {
         promptId[0] = 0;
         promptTool[0] = 0;

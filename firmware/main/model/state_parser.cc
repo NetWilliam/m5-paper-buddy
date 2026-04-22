@@ -1,6 +1,5 @@
 #include "tama_state.h"
 #include "state_parser.h"
-#include "xfer_commands.h"
 #include "cJSON.h"
 #include <cstring>
 #include <freertos/FreeRTOS.h>
@@ -17,12 +16,6 @@ static void safeStrCopy(char* dst, const char* src, size_t maxLen) {
 
 void ApplyJson(cJSON* root, TamaState* out) {
     if (!root) return;
-
-    // Check for command first (owner, name, status, unpair)
-    if (TryXferCommand(root)) {
-        out->lastUpdated = xTaskGetTickCount() * portTICK_PERIOD_MS;
-        return;
-    }
 
     // Time sync
     cJSON* timeArr = cJSON_GetObjectItemCaseSensitive(root, "time");
