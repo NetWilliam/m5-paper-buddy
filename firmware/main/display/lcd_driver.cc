@@ -9,11 +9,12 @@
 #include "lcd_driver.h"
 #include "config.h"
 
-// Pixel address computation for ST7305 in landscape mode (400x300).
+// Pixel address computation for ST7305 in landscape mode (400x300 physical).
 // Each byte holds 8 pixels in a 2-wide x 4-tall block:
 //   byte index = (x/2) * (H/4) + ((H-1-y)/4)
 //   bit position = 7 - (((H-1-y)%4)*2 + x%2)
 // Total: (400/2) * (300/4) = 15000 bytes.
+// LVGL sees 300x400 (DISP_WIDTH x DISP_HEIGHT) with 90° CW rotation applied in FlushCb.
 
 static inline uint32_t PixelIndex(uint16_t x, uint16_t y) {
     uint16_t inv_y = RLCD_HEIGHT - 1 - y;
@@ -45,7 +46,8 @@ void LcdDriver::FlushCb(lv_display_t* disp, const lv_area_t* area, uint8_t* colo
         for (int x = area->x1; x <= area->x2; x++) {
             // RGB565 threshold: below 0x7FFF = black, else white
             uint8_t color = (*buffer < 0x7FFF) ? 0 : 1;
-            SetPixel(driver->disp_buffer_, x, y, color);
+            // 90° CW rotation: logical (x,y) → physical (399-y, x)
+            SetPixel(driver->disp_buffer_, RLCD_WIDTH - 1 - y, x, color);
             buffer++;
         }
     }
@@ -150,13 +152,13 @@ void LcdDriver::InitLvgl() {
     ESP_LOGI(TAG, "lvgl_port_init OK");
     lvgl_port_lock(0);
 
-    display_ = lv_display_create(RLCD_WIDTH, RLCD_HEIGHT);
+    display_ = lv_display_create(DISP_WIDTH, DISP_HEIGHT);
     lv_display_set_color_format(display_, LV_COLOR_FORMAT_RGB565);
     lv_display_set_flush_cb(display_, FlushCb);
     lv_display_set_user_data(display_, this);
 
-    // RGB565 buffer: 2 bytes per pixel (matches Waveshare official driver)
-    size_t buf_size = LV_COLOR_FORMAT_GET_SIZE(LV_COLOR_FORMAT_RGB565) * RLCD_WIDTH * RLCD_HEIGHT;
+    // RGB565 buffer: 2 bytes per pixel
+    size_t buf_size = LV_COLOR_FORMAT_GET_SIZE(LV_COLOR_FORMAT_RGB565) * DISP_WIDTH * DISP_HEIGHT;
     auto* lvgl_buf = static_cast<uint8_t*>(heap_caps_malloc(buf_size, MALLOC_CAP_SPIRAM));
     assert(lvgl_buf && "Failed to allocate LVGL buffer");
     lv_display_set_buffers(display_, lvgl_buf, nullptr, buf_size, LV_DISPLAY_RENDER_MODE_PARTIAL);

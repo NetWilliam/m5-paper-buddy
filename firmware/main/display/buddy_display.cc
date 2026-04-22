@@ -48,7 +48,7 @@ void BuddyDisplay::CreateScreens() {
 
     // ── Splash screen ──
     splash_screen_ = lv_obj_create(default_screen);
-    lv_obj_set_size(splash_screen_, RLCD_WIDTH, RLCD_HEIGHT);
+    lv_obj_set_size(splash_screen_, DISP_WIDTH, DISP_HEIGHT);
     lv_obj_set_pos(splash_screen_, 0, 0);
     lv_obj_add_style(splash_screen_, &screen_style, 0);
     lv_obj_remove_flag(splash_screen_, LV_OBJ_FLAG_SCROLLABLE);
@@ -74,7 +74,7 @@ void BuddyDisplay::CreateScreens() {
 
     // ── Dashboard screen ──
     dash_screen_ = lv_obj_create(default_screen);
-    lv_obj_set_size(dash_screen_, RLCD_WIDTH, RLCD_HEIGHT);
+    lv_obj_set_size(dash_screen_, DISP_WIDTH, DISP_HEIGHT);
     lv_obj_set_pos(dash_screen_, 0, 0);
     lv_obj_add_style(dash_screen_, &screen_style, 0);
     lv_obj_remove_flag(dash_screen_, LV_OBJ_FLAG_SCROLLABLE);
@@ -109,7 +109,7 @@ void BuddyDisplay::CreateScreens() {
 
     // Separator line
     lv_obj_t* sep1 = lv_obj_create(dash_screen_);
-    lv_obj_set_size(sep1, RLCD_WIDTH - 8, 1);
+    lv_obj_set_size(sep1, DISP_WIDTH - 8, 1);
     lv_obj_set_pos(sep1, 4, 36);
     lv_obj_set_style_bg_color(sep1, lv_color_white(), 0);
     lv_obj_set_style_bg_opa(sep1, LV_OPA_COVER, 0);
@@ -128,13 +128,13 @@ void BuddyDisplay::CreateScreens() {
     lv_obj_set_style_text_color(dash_reply_label_, lv_color_white(), 0);
     lv_obj_set_pos(dash_reply_label_, 4, 52);
     lv_label_set_long_mode(dash_reply_label_, LV_LABEL_LONG_WRAP);
-    lv_obj_set_width(dash_reply_label_, RLCD_WIDTH - 8);
+    lv_obj_set_width(dash_reply_label_, DISP_WIDTH - 8);
     lv_label_set_text(dash_reply_label_, "");
 
     // Activity section
     lv_obj_t* sep2 = lv_obj_create(dash_screen_);
-    lv_obj_set_size(sep2, RLCD_WIDTH - 8, 1);
-    lv_obj_set_pos(sep2, 4, 130);
+    lv_obj_set_size(sep2, DISP_WIDTH - 8, 1);
+    lv_obj_set_pos(sep2, 4, 170);
     lv_obj_set_style_bg_color(sep2, lv_color_white(), 0);
     lv_obj_set_style_bg_opa(sep2, LV_OPA_COVER, 0);
     lv_obj_set_style_border_width(sep2, 0, 0);
@@ -143,7 +143,7 @@ void BuddyDisplay::CreateScreens() {
     lv_obj_t* act_title = lv_label_create(dash_screen_);
     lv_obj_set_style_text_font(act_title, font14, 0);
     lv_obj_set_style_text_color(act_title, lv_color_white(), 0);
-    lv_obj_set_pos(act_title, 4, 132);
+    lv_obj_set_pos(act_title, 4, 172);
     lv_label_set_text(act_title, "ACTIVITY");
 
     dash_activity_label_ = lv_label_create(dash_screen_);
@@ -153,15 +153,15 @@ void BuddyDisplay::CreateScreens() {
     lv_style_init(&tight_style);
     lv_style_set_text_line_space(&tight_style, -2);
     lv_obj_add_style(dash_activity_label_, &tight_style, 0);
-    lv_obj_set_pos(dash_activity_label_, 4, 146);
+    lv_obj_set_pos(dash_activity_label_, 4, 186);
     lv_label_set_long_mode(dash_activity_label_, LV_LABEL_LONG_WRAP);
-    lv_obj_set_size(dash_activity_label_, RLCD_WIDTH - 8, 126);
+    lv_obj_set_size(dash_activity_label_, DISP_WIDTH - 8, 186);
     lv_label_set_text(dash_activity_label_, "");
 
     // Footer: face (left) + status (right)
     lv_obj_t* sep3 = lv_obj_create(dash_screen_);
-    lv_obj_set_size(sep3, RLCD_WIDTH - 8, 1);
-    lv_obj_set_pos(sep3, 4, RLCD_HEIGHT - 28);
+    lv_obj_set_size(sep3, DISP_WIDTH - 8, 1);
+    lv_obj_set_pos(sep3, 4, DISP_HEIGHT - 28);
     lv_obj_set_style_bg_color(sep3, lv_color_white(), 0);
     lv_obj_set_style_bg_opa(sep3, LV_OPA_COVER, 0);
     lv_obj_set_style_border_width(sep3, 0, 0);
@@ -170,13 +170,13 @@ void BuddyDisplay::CreateScreens() {
     dash_buddy_label_ = lv_label_create(dash_screen_);
     lv_obj_set_style_text_font(dash_buddy_label_, font14, 0);
     lv_obj_set_style_text_color(dash_buddy_label_, lv_color_white(), 0);
-    lv_obj_set_pos(dash_buddy_label_, 4, RLCD_HEIGHT - 24);
+    lv_obj_set_pos(dash_buddy_label_, 4, DISP_HEIGHT - 24);
     lv_label_set_text(dash_buddy_label_, "");
 
     dash_status_label_ = lv_label_create(dash_screen_);
     lv_obj_set_style_text_font(dash_status_label_, font14, 0);
     lv_obj_set_style_text_color(dash_status_label_, lv_color_white(), 0);
-    lv_obj_align(dash_status_label_, LV_ALIGN_TOP_RIGHT, -4, RLCD_HEIGHT - 24);
+    lv_obj_align(dash_status_label_, LV_ALIGN_TOP_RIGHT, -4, DISP_HEIGHT - 24);
     lv_label_set_text(dash_status_label_, "");
 
     // ── Approval screen (inverted: white bg, black text) ──
@@ -190,7 +190,7 @@ void BuddyDisplay::CreateScreens() {
     lv_style_set_text_line_space(&approve_style, 0);
 
     approve_screen_ = lv_obj_create(default_screen);
-    lv_obj_set_size(approve_screen_, RLCD_WIDTH, RLCD_HEIGHT);
+    lv_obj_set_size(approve_screen_, DISP_WIDTH, DISP_HEIGHT);
     lv_obj_set_pos(approve_screen_, 0, 0);
     lv_obj_add_style(approve_screen_, &approve_style, 0);
     lv_obj_remove_flag(approve_screen_, LV_OBJ_FLAG_SCROLLABLE);
@@ -219,7 +219,7 @@ void BuddyDisplay::CreateScreens() {
 
     // Separator
     lv_obj_t* approve_sep = lv_obj_create(approve_screen_);
-    lv_obj_set_size(approve_sep, RLCD_WIDTH - 8, 1);
+    lv_obj_set_size(approve_sep, DISP_WIDTH - 8, 1);
     lv_obj_set_pos(approve_sep, 4, 64);
     lv_obj_set_style_bg_color(approve_sep, lv_color_black(), 0);
     lv_obj_set_style_bg_opa(approve_sep, LV_OPA_COVER, 0);
@@ -228,7 +228,7 @@ void BuddyDisplay::CreateScreens() {
 
     // Body (scrollable)
     lv_obj_t* body_container = lv_obj_create(approve_screen_);
-    lv_obj_set_size(body_container, RLCD_WIDTH - 8, 180);
+    lv_obj_set_size(body_container, DISP_WIDTH - 8, 280);
     lv_obj_set_pos(body_container, 4, 68);
     lv_obj_set_style_bg_color(body_container, lv_color_white(), 0);
     lv_obj_set_style_bg_opa(body_container, LV_OPA_COVER, 0);
@@ -242,25 +242,25 @@ void BuddyDisplay::CreateScreens() {
     lv_obj_set_style_text_color(approve_body_label_, lv_color_black(), 0);
     lv_obj_add_style(approve_body_label_, &tight_style, 0);
     lv_label_set_long_mode(approve_body_label_, LV_LABEL_LONG_WRAP);
-    lv_obj_set_width(approve_body_label_, RLCD_WIDTH - 16);
+    lv_obj_set_width(approve_body_label_, DISP_WIDTH - 16);
     lv_label_set_text(approve_body_label_, "");
 
     // Bottom section: wait counter + button hints
     approve_wait_label_ = lv_label_create(approve_screen_);
     lv_obj_set_style_text_font(approve_wait_label_, font14, 0);
     lv_obj_set_style_text_color(approve_wait_label_, lv_color_black(), 0);
-    lv_obj_set_pos(approve_wait_label_, 4, 254);
+    lv_obj_set_pos(approve_wait_label_, 4, 354);
     lv_label_set_text(approve_wait_label_, "");
 
     approve_hints_label_ = lv_label_create(approve_screen_);
     lv_obj_set_style_text_font(approve_hints_label_, &lv_font_montserrat_20, 0);
     lv_obj_set_style_text_color(approve_hints_label_, lv_color_black(), 0);
     lv_obj_align(approve_hints_label_, LV_ALIGN_BOTTOM_MID, 0, -4);
-    lv_label_set_text(approve_hints_label_, "KEY=approve  BOOT=deny");
+    lv_label_set_text(approve_hints_label_, "BOOT=approve  KEY=deny");
 
     // ── Passkey screen ──
     passkey_screen_ = lv_obj_create(default_screen);
-    lv_obj_set_size(passkey_screen_, RLCD_WIDTH, RLCD_HEIGHT);
+    lv_obj_set_size(passkey_screen_, DISP_WIDTH, DISP_HEIGHT);
     lv_obj_set_pos(passkey_screen_, 0, 0);
     lv_obj_add_style(passkey_screen_, &approve_style, 0);
     lv_obj_remove_flag(passkey_screen_, LV_OBJ_FLAG_SCROLLABLE);
