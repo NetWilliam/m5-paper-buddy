@@ -27,6 +27,7 @@ private:
     void InitLvgl();
 
     void RLCD_Reset();
+    void WaitBusy();
     void RLCD_SendCommand(uint8_t reg);
     void RLCD_SendData(uint8_t data);
     void RLCD_SendBuffer(const uint8_t* data, int len);

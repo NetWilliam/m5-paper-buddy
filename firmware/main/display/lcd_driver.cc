@@ -9,47 +9,44 @@
 #include "lcd_driver.h"
 #include "config.h"
 
-// Pixel address computation for ST7305 in landscape mode (400x300).
-// Each byte holds 8 pixels in a 2-wide x 4-tall block:
-//   byte index = (x/2) * (H/4) + ((H-1-y)/4)
-//   bit position = 7 - (((H-1-y)%4)*2 + x%2)
-// Total: (400/2) * (300/4) = 15000 bytes.
+// ----------------------------------------------------------------------
+// SOFTWARE ROTATION FOR ST7305
+// ----------------------------------------------------------------------
+#define PHYS_WIDTH  400
+#define PHYS_HEIGHT 300
 
-static inline uint32_t PixelIndex(uint16_t x, uint16_t y) {
-    uint16_t inv_y = RLCD_HEIGHT - 1 - y;
-    return (x >> 1) * (RLCD_HEIGHT >> 2) + (inv_y >> 2);
+static inline uint32_t GetSt7305Idx(uint16_t px, uint16_t py) {
+    uint16_t inv_y = PHYS_HEIGHT - 1 - py;
+    return (px >> 1) * (PHYS_HEIGHT >> 2) + (inv_y >> 2);
 }
 
-static inline uint8_t PixelMask(uint16_t x, uint16_t y) {
-    uint16_t inv_y = RLCD_HEIGHT - 1 - y;
-    return 1 << (7 - (((inv_y & 3) << 1) | (x & 1)));
+static inline uint8_t GetSt7305Mask(uint16_t px, uint16_t py) {
+    uint16_t inv_y = PHYS_HEIGHT - 1 - py;
+    return 1 << (7 - (((inv_y & 3) << 1) | (px & 1)));
 }
 
 static void SetPixel(uint8_t* buf, uint16_t x, uint16_t y, uint8_t color) {
-    uint32_t idx = PixelIndex(x, y);
-    uint8_t mask = PixelMask(x, y);
-    if (color) {
-        buf[idx] |= mask;
-    } else {
-        buf[idx] &= ~mask;
-    }
+    if (x >= RLCD_WIDTH || y >= RLCD_HEIGHT) return;
+    // Clockwise 90 rotation: maps 300x400 to 400x300
+    uint16_t phys_x = (PHYS_WIDTH - 1) - y;
+    uint16_t phys_y = x;
+
+    uint32_t idx = GetSt7305Idx(phys_x, phys_y);
+    uint8_t mask = GetSt7305Mask(phys_x, phys_y);
+    if (color) buf[idx] |= mask;
+    else buf[idx] &= ~mask;
 }
 
-// FlushCb: convert RGB565 to 1-bit, copy to frame buffer, send via SPI.
-// Matches the official Waveshare driver exactly.
 void LcdDriver::FlushCb(lv_display_t* disp, const lv_area_t* area, uint8_t* color_p) {
     auto* driver = static_cast<LcdDriver*>(lv_display_get_user_data(disp));
-
     uint16_t* buffer = reinterpret_cast<uint16_t*>(color_p);
     for (int y = area->y1; y <= area->y2; y++) {
         for (int x = area->x1; x <= area->x2; x++) {
-            // RGB565 threshold: below 0x7FFF = black, else white
             uint8_t color = (*buffer < 0x7FFF) ? 0 : 1;
             SetPixel(driver->disp_buffer_, x, y, color);
             buffer++;
         }
     }
-
     driver->RLCD_Display();
     lv_disp_flush_ready(disp);
 }
@@ -58,8 +55,8 @@ LcdDriver::LcdDriver() = default;
 LcdDriver::~LcdDriver() = default;
 
 bool LcdDriver::Init() {
-    ESP_LOGI(TAG, "Initializing LcdDriver (RLCD 400x300, ST7305)");
-
+    ESP_LOGI(TAG, "Initializing LcdDriver (Software Portrait 300x400, SPI3)");
+    
     InitSpi();
     InitRstGpio();
     InitBuffers();
@@ -67,11 +64,11 @@ bool LcdDriver::Init() {
     RLCD_InitSequence();
 
     if (display_ == nullptr) {
-        ESP_LOGE(TAG, "LVGL display creation failed");
+        ESP_LOGE(TAG, "Failed to create LVGL display");
         return false;
     }
 
-    ESP_LOGI(TAG, "LcdDriver ready");
+    ESP_LOGI(TAG, "LcdDriver initialization complete");
     return true;
 }
 
@@ -93,17 +90,19 @@ void LcdDriver::DisplayRaw(const uint8_t* raw) {
 }
 
 void LcdDriver::InitSpi() {
-    ESP_LOGI(TAG, "Initializing SPI bus");
+    ESP_LOGI(TAG, "Initializing SPI bus (Host %d, SCK=%d, MOSI=%d)", 
+             (int)LCD_SPI_HOST, (int)RLCD_SCK_PIN, (int)RLCD_MOSI_PIN);
+             
     spi_bus_config_t buscfg = {};
     buscfg.miso_io_num     = -1;
     buscfg.mosi_io_num     = RLCD_MOSI_PIN;
     buscfg.sclk_io_num     = RLCD_SCK_PIN;
     buscfg.quadwp_io_num   = -1;
     buscfg.quadhd_io_num   = -1;
-    buscfg.max_transfer_sz = RLCD_WIDTH * RLCD_HEIGHT;
-
+    buscfg.max_transfer_sz = PHYS_WIDTH * PHYS_HEIGHT;
     ESP_ERROR_CHECK(spi_bus_initialize(LCD_SPI_HOST, &buscfg, SPI_DMA_CH_AUTO));
 
+    ESP_LOGI(TAG, "Creating LCD panel IO (CS=%d, DC=%d)", (int)RLCD_CS_PIN, (int)RLCD_DC_PIN);
     esp_lcd_panel_io_spi_config_t io_cfg = {};
     io_cfg.dc_gpio_num       = RLCD_DC_PIN;
     io_cfg.cs_gpio_num       = RLCD_CS_PIN;
@@ -111,56 +110,48 @@ void LcdDriver::InitSpi() {
     io_cfg.lcd_cmd_bits      = 8;
     io_cfg.lcd_param_bits    = 8;
     io_cfg.spi_mode          = 0;
-    io_cfg.trans_queue_depth = 7;
-
-    ESP_ERROR_CHECK(esp_lcd_new_panel_io_spi(
-        static_cast<esp_lcd_spi_bus_handle_t>(LCD_SPI_HOST),
-        &io_cfg, &io_handle_));
+    io_cfg.trans_queue_depth = 10;
+    ESP_ERROR_CHECK(esp_lcd_new_panel_io_spi((esp_lcd_spi_bus_handle_t)LCD_SPI_HOST, &io_cfg, &io_handle_));
 }
 
 void LcdDriver::InitRstGpio() {
+    ESP_LOGI(TAG, "Configuring Reset GPIO (Pin %d)", (int)RLCD_RST_PIN);
     gpio_config_t gpio_conf = {};
-    gpio_conf.intr_type     = GPIO_INTR_DISABLE;
-    gpio_conf.mode          = GPIO_MODE_OUTPUT;
-    gpio_conf.pin_bit_mask  = (1ULL << RLCD_RST_PIN);
-    gpio_conf.pull_down_en  = GPIO_PULLDOWN_DISABLE;
-    gpio_conf.pull_up_en    = GPIO_PULLUP_ENABLE;
-    ESP_ERROR_CHECK_WITHOUT_ABORT(gpio_config(&gpio_conf));
+    gpio_conf.mode = GPIO_MODE_OUTPUT;
+    gpio_conf.pin_bit_mask = (1ULL << RLCD_RST_PIN);
+    ESP_ERROR_CHECK(gpio_config(&gpio_conf));
     gpio_set_level(RLCD_RST_PIN, 1);
 }
 
+void LcdDriver::WaitBusy() {} 
+
 void LcdDriver::InitBuffers() {
-    disp_buffer_len_ = (RLCD_WIDTH * RLCD_HEIGHT) >> 3;
+    disp_buffer_len_ = (PHYS_WIDTH * PHYS_HEIGHT) >> 3;
+    ESP_LOGI(TAG, "Allocating display buffer (%d bytes) in PSRAM", disp_buffer_len_);
     disp_buffer_ = static_cast<uint8_t*>(heap_caps_malloc(disp_buffer_len_, MALLOC_CAP_SPIRAM));
-    assert(disp_buffer_ && "Failed to allocate display buffer");
+    assert(disp_buffer_ && "Failed to allocate display buffer in PSRAM");
+    memset(disp_buffer_, 0xFF, disp_buffer_len_);
 }
 
 void LcdDriver::InitLvgl() {
-    ESP_LOGI(TAG, "Initializing LVGL");
+    ESP_LOGI(TAG, "Initializing LVGL port");
     lv_init();
-
     lvgl_port_cfg_t port_cfg = ESP_LVGL_PORT_INIT_CONFIG();
     port_cfg.task_priority   = 2;
     port_cfg.timer_period_ms = 50;
-    esp_err_t err = lvgl_port_init(&port_cfg);
-    if (err != ESP_OK) {
-        ESP_LOGE(TAG, "lvgl_port_init failed: %s", esp_err_to_name(err));
-        return;
-    }
-    ESP_LOGI(TAG, "lvgl_port_init OK");
-    lvgl_port_lock(0);
+    ESP_ERROR_CHECK(lvgl_port_init(&port_cfg));
 
+    lvgl_port_lock(0);
     display_ = lv_display_create(RLCD_WIDTH, RLCD_HEIGHT);
     lv_display_set_color_format(display_, LV_COLOR_FORMAT_RGB565);
     lv_display_set_flush_cb(display_, FlushCb);
     lv_display_set_user_data(display_, this);
 
-    // RGB565 buffer: 2 bytes per pixel (matches Waveshare official driver)
-    size_t buf_size = LV_COLOR_FORMAT_GET_SIZE(LV_COLOR_FORMAT_RGB565) * RLCD_WIDTH * RLCD_HEIGHT;
+    size_t buf_size = 2 * RLCD_WIDTH * RLCD_HEIGHT;
+    ESP_LOGI(TAG, "Allocating LVGL RGB565 buffer (%d bytes) in PSRAM", (int)buf_size);
     auto* lvgl_buf = static_cast<uint8_t*>(heap_caps_malloc(buf_size, MALLOC_CAP_SPIRAM));
-    assert(lvgl_buf && "Failed to allocate LVGL buffer");
+    assert(lvgl_buf && "Failed to allocate LVGL buffer in PSRAM");
     lv_display_set_buffers(display_, lvgl_buf, nullptr, buf_size, LV_DISPLAY_RENDER_MODE_PARTIAL);
-
     lvgl_port_unlock();
 }
 
@@ -180,9 +171,9 @@ void LcdDriver::RLCD_Reset() {
     gpio_set_level(RLCD_RST_PIN, 1);
     vTaskDelay(pdMS_TO_TICKS(50));
     gpio_set_level(RLCD_RST_PIN, 0);
-    vTaskDelay(pdMS_TO_TICKS(20));
-    gpio_set_level(RLCD_RST_PIN, 1);
     vTaskDelay(pdMS_TO_TICKS(50));
+    gpio_set_level(RLCD_RST_PIN, 1);
+    vTaskDelay(pdMS_TO_TICKS(150));
 }
 
 void LcdDriver::RLCD_ColorClear(uint8_t color) {
@@ -190,20 +181,15 @@ void LcdDriver::RLCD_ColorClear(uint8_t color) {
 }
 
 void LcdDriver::RLCD_Display() {
-    RLCD_SendCommand(0x2A);
-    RLCD_SendData(0x12);
-    RLCD_SendData(0x2A);
-    RLCD_SendCommand(0x2B);
-    RLCD_SendData(0x00);
-    RLCD_SendData(0xC7);
+    RLCD_SendCommand(0x2A); RLCD_SendData(0x12); RLCD_SendData(0x2A);
+    RLCD_SendCommand(0x2B); RLCD_SendData(0x00); RLCD_SendData(0xC7);
     RLCD_SendCommand(0x2C);
     RLCD_SendBuffer(disp_buffer_, disp_buffer_len_);
 }
 
 void LcdDriver::RLCD_InitSequence() {
+    ESP_LOGI(TAG, "Sending ST7305 init sequence...");
     RLCD_Reset();
-
-    // ST7305 init sequence (matches Waveshare official driver)
     RLCD_SendCommand(0xD6); RLCD_SendData(0x17); RLCD_SendData(0x02);
     RLCD_SendCommand(0xD1); RLCD_SendData(0x01);
     RLCD_SendCommand(0xC0); RLCD_SendData(0x11); RLCD_SendData(0x04);
@@ -221,25 +207,22 @@ void LcdDriver::RLCD_InitSequence() {
     RLCD_SendCommand(0x62); RLCD_SendData(0x32); RLCD_SendData(0x03); RLCD_SendData(0x1F);
     RLCD_SendCommand(0xB7); RLCD_SendData(0x13);
     RLCD_SendCommand(0xB0); RLCD_SendData(0x64);
-
     RLCD_SendCommand(0x11);
     vTaskDelay(pdMS_TO_TICKS(200));
-
     RLCD_SendCommand(0xC9); RLCD_SendData(0x00);
     RLCD_SendCommand(0x36); RLCD_SendData(0x48);
     RLCD_SendCommand(0x3A); RLCD_SendData(0x11);
     RLCD_SendCommand(0xB9); RLCD_SendData(0x20);
     RLCD_SendCommand(0xB8); RLCD_SendData(0x29);
-
-    RLCD_SendCommand(0x21);
-
+    RLCD_SendCommand(0x21); 
     RLCD_SendCommand(0x2A); RLCD_SendData(0x12); RLCD_SendData(0x2A);
     RLCD_SendCommand(0x2B); RLCD_SendData(0x00); RLCD_SendData(0xC7);
     RLCD_SendCommand(0x35); RLCD_SendData(0x00);
     RLCD_SendCommand(0xD0); RLCD_SendData(0xFF);
-
     RLCD_SendCommand(0x38);
     RLCD_SendCommand(0x29);
-
-    RLCD_ColorClear(0xFF);
+    vTaskDelay(pdMS_TO_TICKS(100));
+    
+    RLCD_ColorClear(0xFF); 
+    RLCD_Display();
 }

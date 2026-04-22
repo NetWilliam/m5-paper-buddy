@@ -228,7 +228,7 @@ void BuddyDisplay::CreateScreens() {
 
     // Body (scrollable)
     lv_obj_t* body_container = lv_obj_create(approve_screen_);
-    lv_obj_set_size(body_container, RLCD_WIDTH - 8, 180);
+    lv_obj_set_size(body_container, RLCD_WIDTH - 8, 260);
     lv_obj_set_pos(body_container, 4, 68);
     lv_obj_set_style_bg_color(body_container, lv_color_white(), 0);
     lv_obj_set_style_bg_opa(body_container, LV_OPA_COVER, 0);
@@ -249,7 +249,7 @@ void BuddyDisplay::CreateScreens() {
     approve_wait_label_ = lv_label_create(approve_screen_);
     lv_obj_set_style_text_font(approve_wait_label_, font14, 0);
     lv_obj_set_style_text_color(approve_wait_label_, lv_color_black(), 0);
-    lv_obj_set_pos(approve_wait_label_, 4, 254);
+    lv_obj_set_pos(approve_wait_label_, 4, 340);
     lv_label_set_text(approve_wait_label_, "");
 
     approve_hints_label_ = lv_label_create(approve_screen_);
