@@ -14,3 +14,5 @@ data/.tmp/
 
 firmware/managed_components/*
 firmware/build/*
+
+__pycache__
